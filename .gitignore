@@ -9,5 +9,7 @@ apps/api/dist
 apps/api/node_modules
 apps/web/node_modules
 apps/web/.next
+apps/web/tsconfig.tsbuildinfo
 packages/shared/node_modules
+packages/shared/dist
 pnpm-lock.yaml
