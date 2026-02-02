@@ -1,6 +1,9 @@
 import { BadRequestException, Controller, Get, Param, Query } from '@nestjs/common';
 import type { Market, PriceResponse } from '@pokecard/shared';
 
+const PRICE_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+const priceCache = new Map<string, { data: PriceResponse; expiresAt: number }>();
+
 @Controller('/cards')
 export class PricesController {
   @Get(':cardId/prices')
@@ -11,10 +14,16 @@ export class PricesController {
     }
     const market: Market = marketQuery ?? 'US';
 
+    const cacheKey = `${cardId}:${market}`;
+    const cached = priceCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
+
     // TODO: Replace with real market integration (TCGplayer for US, JP strategy TBD)
     // Add Redis caching + persisted snapshots in Postgres.
 
-    return {
+    const response: PriceResponse = {
       cardId,
       market,
       currency: market === 'JP' ? 'JPY' : 'USD',
@@ -23,5 +32,7 @@ export class PricesController {
       source: market === 'JP' ? 'JP_STUB' : 'US_STUB',
       fetchedAt: new Date().toISOString(),
     };
+    priceCache.set(cacheKey, { data: response, expiresAt: Date.now() + PRICE_CACHE_TTL_MS });
+    return response;
   }
 }

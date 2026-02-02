@@ -10,6 +10,7 @@ import type {
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:4000';
+const LOW_CONFIDENCE_THRESHOLD = 0.5;
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -37,6 +38,8 @@ export default function HomePage() {
   const streamRef = useRef<MediaStream | null>(null);
 
   const candidates = useMemo(() => recognizeRes?.candidates ?? [], [recognizeRes]);
+  const isLowConfidence =
+    selected?.confidence != null && selected.confidence < LOW_CONFIDENCE_THRESHOLD;
 
   useEffect(() => {
     async function startCamera() {
@@ -248,6 +251,11 @@ export default function HomePage() {
 
         <div style={{ border: '1px solid #ddd', borderRadius: 12, padding: 12 }}>
           <h2 style={{ margin: 0, fontSize: 16 }}>Candidates</h2>
+          {isLowConfidence && (
+            <p style={{ marginTop: 8, color: '#a04500', fontSize: 12 }}>
+              Low confidence. Please verify the candidate.
+            </p>
+          )}
           {candidates.length === 0 ? (
             <p style={{ opacity: 0.7, marginTop: 10 }}>Run recognize to see candidates.</p>
           ) : (

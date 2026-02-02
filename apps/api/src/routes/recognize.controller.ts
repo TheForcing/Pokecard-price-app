@@ -3,6 +3,19 @@ import type { RecognizeRequest, RecognizeResponse } from '@pokecard/shared';
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const DEFAULT_TOP_K = 5;
+const LOW_CONFIDENCE_THRESHOLD = 0.5;
+
+type RecognitionLogEntry = {
+  id: string;
+  imageBytes: number;
+  predictedCardId?: string;
+  candidates: { cardId: string; confidence: number }[];
+  confidence: number;
+  elapsedMs: number;
+  createdAt: string;
+};
+
+const recognitionLogs: RecognitionLogEntry[] = [];
 
 function decodeBase64Image(data: string): { buffer: Buffer; mime?: string } {
   const dataUrlMatch = data.match(/^data:(.+);base64,(.*)$/);
@@ -93,8 +106,24 @@ export class RecognizeController {
       language: hint.language ?? 'EN',
     }));
 
+    const best = candidates[0];
+    const elapsedMs = Date.now() - startedAt;
+    const logEntry: RecognitionLogEntry = {
+      id: `rec_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      imageBytes: buffer.length,
+      predictedCardId: best?.cardId,
+      candidates: candidates.map((candidate) => ({
+        cardId: candidate.cardId,
+        confidence: candidate.confidence,
+      })),
+      confidence: best?.confidence ?? 0,
+      elapsedMs,
+      createdAt: new Date().toISOString(),
+    };
+    recognitionLogs.push(logEntry);
+
     return {
-      best: candidates[0],
+      best,
       candidates,
       debug: {
         note: 'stub: decode + size check + ocr/embedding placeholders',
@@ -107,8 +136,11 @@ export class RecognizeController {
           topK: candidates.length,
           embeddingBytes: embedding.embeddingBytes,
         },
+        logId: logEntry.id,
+        confidence: logEntry.confidence,
+        isLowConfidence: logEntry.confidence < LOW_CONFIDENCE_THRESHOLD,
         steps: ['decode', 'size-check', 'ocr-roi:stub', 'embedding:stub'],
-        elapsedMs: Date.now() - startedAt,
+        elapsedMs,
       },
     };
   }
