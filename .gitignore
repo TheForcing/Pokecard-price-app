@@ -1,0 +1,13 @@
+node_modules
+.next
+.dist
+.DS_Store
+.env
+.env.*
+coverage
+apps/api/dist
+apps/api/node_modules
+apps/web/node_modules
+apps/web/.next
+packages/shared/node_modules
+pnpm-lock.yaml
