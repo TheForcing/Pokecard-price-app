@@ -1,9 +1,37 @@
-import { BadRequestException, Body, Controller, Post } from '@nestjs/common';
-import type { RecognizeRequest, RecognizeResponse } from '@pokecard/shared';
+import {
+  BadGatewayException,
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import type {
+  CandidateCard,
+  Language,
+  RecognizeRequest,
+  RecognizeResponse,
+} from '@pokecard/shared';
+import { createHash } from 'crypto';
+import Tesseract, { type RecognizeResult } from 'tesseract.js';
+import { CardService } from '../services/card.service.js';
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-const DEFAULT_TOP_K = 5;
+const DEFAULT_TOP_K = 10;
 const LOW_CONFIDENCE_THRESHOLD = 0.5;
+const OCR_MAX_LINES = 24;
+const OCR_MIN_CHARACTERS = 3;
+const OCR_TOP_SMALL_RATIO = 0.28;
+const OCR_TOP_LARGE_RATIO = 0.45;
+const OCR_MID_RATIO = 0.25;
+
+const OCR_LANGUAGE_MAP: Record<Language, string> = {
+  EN: 'eng',
+  JA: 'jpn+eng',
+  KO: 'kor+eng',
+};
 
 type RecognitionLogEntry = {
   id: string;
@@ -17,6 +45,26 @@ type RecognitionLogEntry = {
 
 const recognitionLogs: RecognitionLogEntry[] = [];
 
+type ImageSize = {
+  width: number;
+  height: number;
+};
+
+type OcrRectangle = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+type OcrResult = {
+  text: string;
+  rawText: string;
+  rawLines: string[];
+  lines: string[];
+  confidence: number;
+};
+
 function decodeBase64Image(data: string): { buffer: Buffer; mime?: string } {
   const dataUrlMatch = data.match(/^data:(.+);base64,(.*)$/);
   const base64 = dataUrlMatch ? dataUrlMatch[2] : data;
@@ -29,90 +77,364 @@ function decodeBase64Image(data: string): { buffer: Buffer; mime?: string } {
   return { buffer, mime };
 }
 
-function runOcrRoiStub(buffer: Buffer, hint: RecognizeRequest['hint']) {
-  const normalized = (value?: string) => (value ? value.toUpperCase() : undefined);
+function normalizeText(value: string): string {
+  return value
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function readPngSize(buffer: Buffer): ImageSize | null {
+  if (buffer.length < 24) return null;
+  if (buffer.readUInt32BE(0) !== 0x89504e47) return null;
+  if (buffer.readUInt32BE(4) !== 0x0d0a1a0a) return null;
+  const width = buffer.readUInt32BE(16);
+  const height = buffer.readUInt32BE(20);
+  if (!width || !height) return null;
+  return { width, height };
+}
+
+function readJpegSize(buffer: Buffer): ImageSize | null {
+  if (buffer.length < 4) return null;
+  if (buffer[0] !== 0xff || buffer[1] !== 0xd8) return null;
+  let offset = 2;
+  while (offset + 9 < buffer.length) {
+    if (buffer[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = buffer[offset + 1];
+    if (marker === 0xd9 || marker === 0xda) break;
+    const segmentLength = buffer.readUInt16BE(offset + 2);
+    if (segmentLength < 2) return null;
+    const isSofMarker =
+      marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+    if (isSofMarker) {
+      if (offset + 2 + segmentLength > buffer.length) return null;
+      const height = buffer.readUInt16BE(offset + 5);
+      const width = buffer.readUInt16BE(offset + 7);
+      if (!width || !height) return null;
+      return { width, height };
+    }
+    offset += 2 + segmentLength;
+  }
+  return null;
+}
+
+function getImageSize(buffer: Buffer): ImageSize | null {
+  return readPngSize(buffer) ?? readJpegSize(buffer);
+}
+
+function clampRect(rect: OcrRectangle, size: ImageSize): OcrRectangle {
+  const left = Math.max(0, Math.min(rect.left, size.width));
+  const top = Math.max(0, Math.min(rect.top, size.height));
+  const width = Math.max(1, Math.min(rect.width, size.width - left));
+  const height = Math.max(1, Math.min(rect.height, size.height - top));
+  return { left, top, width, height };
+}
+
+function countMatches(value: string, regex: RegExp): number {
+  return value.match(regex)?.length ?? 0;
+}
+
+function hasLetter(value: string): boolean {
+  return /\p{L}/u.test(value);
+}
+
+function isLikelyNameLine(value: string): boolean {
+  const letters = countMatches(value, /\p{L}/gu);
+  const digits = countMatches(value, /\p{N}/gu);
+  const total = letters + digits;
+  if (!total) return false;
+  if (letters < 2) return false;
+  return letters / total >= 0.4;
+}
+
+function hashImage(buffer: Buffer): string {
+  return createHash('sha256').update(buffer).digest('hex');
+}
+
+async function runOcr(
+  buffer: Buffer,
+  language: Language,
+  rectangle?: OcrRectangle,
+): Promise<OcrResult> {
+  const lang = OCR_LANGUAGE_MAP[language] ?? OCR_LANGUAGE_MAP.EN;
+  let result: RecognizeResult;
+  try {
+    const options = rectangle
+      ? ({ rectangle } as unknown as Parameters<typeof Tesseract.recognize>[2])
+      : undefined;
+    result = await Tesseract.recognize(buffer, lang, options);
+  } catch (error) {
+    throw new ServiceUnavailableException('ocr request failed');
+  }
+
+  const rawText = typeof result.data.text === 'string' ? result.data.text : '';
+  const rawLines = (result.data.lines ?? [])
+    .map((line: { text: string }) => (typeof line.text === 'string' ? line.text : ''))
+    .filter((line: string) => line.length > 0);
+  const lines = rawLines
+    .map((line: string) => normalizeText(line))
+    .filter((line: string) => line.length >= OCR_MIN_CHARACTERS)
+    .slice(0, OCR_MAX_LINES);
+
   return {
-    setCode: normalized(hint?.market === 'JP' ? 'JP' : undefined),
-    number: undefined,
-    language: hint?.language,
-    confidence: 0,
-    bytes: buffer.length,
+    text: normalizeText(rawText),
+    rawText,
+    rawLines,
+    lines,
+    confidence: typeof result.data.confidence === 'number' ? result.data.confidence / 100 : 0,
   };
 }
 
-function runEmbeddingSearchStub(buffer: Buffer, topK = DEFAULT_TOP_K) {
-  const base = [
-    {
-      cardId: 'stub-001',
-      name: 'Pikachu (Stub)',
-      setCode: 'STB',
-      number: '001/100',
-      confidence: 0.62,
-      imageUrl: 'https://images.pokemontcg.io/base1/58.png',
-    },
-    {
-      cardId: 'stub-002',
-      name: 'Charizard (Stub)',
-      setCode: 'STB',
-      number: '002/100',
-      confidence: 0.41,
-      imageUrl: 'https://images.pokemontcg.io/base1/4.png',
-    },
-    {
-      cardId: 'stub-003',
-      name: 'Blastoise (Stub)',
-      setCode: 'STB',
-      number: '003/100',
-      confidence: 0.33,
-      imageUrl: 'https://images.pokemontcg.io/base1/2.png',
-    },
-    {
-      cardId: 'stub-004',
-      name: 'Venusaur (Stub)',
-      setCode: 'STB',
-      number: '004/100',
-      confidence: 0.28,
-      imageUrl: 'https://images.pokemontcg.io/base1/15.png',
-    },
-    {
-      cardId: 'stub-005',
-      name: 'Gyarados (Stub)',
-      setCode: 'STB',
-      number: '005/100',
-      confidence: 0.22,
-      imageUrl: 'https://images.pokemontcg.io/base1/6.png',
-    },
-  ];
-  return {
-    candidates: base.slice(0, Math.max(1, Math.min(topK, base.length))),
-    embeddingBytes: buffer.length,
-  };
+function extractCandidateLinesFromOcr(ocr: OcrResult) {
+  const normalizedLines = ocr.lines
+    .map((line) => normalizeText(line))
+    .filter((line) => line.length >= OCR_MIN_CHARACTERS);
+  const letterLines = normalizedLines.filter((line) => hasLetter(line) && isLikelyNameLine(line));
+  if (letterLines.length > 0) return letterLines.slice(0, OCR_MAX_LINES);
+
+  const fallbackLines = ocr.rawLines
+    .map((line) => normalizeText(line))
+    .filter((line) => line.length >= OCR_MIN_CHARACTERS);
+  const fallbackLetterLines = fallbackLines.filter(
+    (line) => hasLetter(line) && isLikelyNameLine(line),
+  );
+  if (fallbackLetterLines.length > 0) return fallbackLetterLines.slice(0, OCR_MAX_LINES);
+
+  const normalizedText = normalizeText(ocr.rawText);
+  if (!normalizedText) return normalizedLines.slice(0, OCR_MAX_LINES);
+  const tokenCandidates = normalizedText
+    .split(' ')
+    .filter((token) => token.length >= OCR_MIN_CHARACTERS)
+    .filter((token) => hasLetter(token));
+  if (tokenCandidates.length > 0) return tokenCandidates.slice(0, OCR_MAX_LINES);
+
+  return normalizedLines.slice(0, OCR_MAX_LINES);
+}
+
+function extractCandidateLines(ocrs: OcrResult[]) {
+  for (const ocr of ocrs) {
+    const lines = extractCandidateLinesFromOcr(ocr);
+    if (lines.length > 0) return lines;
+  }
+  return ocrs[0]?.lines ?? [];
+}
+
+type PokemonTcgCard = {
+  id: string;
+  name: string;
+  number?: string;
+  rarity?: string;
+  set?: { id?: string; name?: string; printedTotal?: number | string };
+  images?: { small?: string };
+};
+
+async function fetchPokemonTcgCandidates(query: string, topK: number, language: Language) {
+  const url = new URL('https://api.pokemontcg.io/v2/cards');
+  url.searchParams.set('q', `name:"${query}"`);
+  url.searchParams.set('pageSize', String(topK));
+
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+  } catch (error) {
+    throw new ServiceUnavailableException('pokemon tcg api request failed');
+  }
+
+  if (!response.ok) {
+    throw new BadGatewayException(`pokemon tcg api error: ${response.status}`);
+  }
+
+  const payload = (await response.json()) as unknown;
+  if (!payload || typeof payload !== 'object') {
+    throw new BadGatewayException('pokemon tcg api invalid response');
+  }
+
+  const record = payload as Record<string, unknown>;
+  const data = Array.isArray(record.data) ? record.data : [];
+  const candidates: CandidateCard[] = [];
+  const cards: PokemonTcgCard[] = [];
+  for (const item of data) {
+    if (!item || typeof item !== 'object') continue;
+    const card = item as Record<string, unknown>;
+    const id = typeof card.id === 'string' ? card.id : null;
+    const name = typeof card.name === 'string' ? card.name : null;
+    const number = typeof card.number === 'string' ? card.number : null;
+    const set =
+      card.set && typeof card.set === 'object' ? (card.set as Record<string, unknown>) : null;
+    const setCode = set && typeof set.id === 'string' ? set.id : null;
+    const images =
+      card.images && typeof card.images === 'object'
+        ? (card.images as Record<string, unknown>)
+        : null;
+    const imageUrl = images && typeof images.small === 'string' ? images.small : null;
+    if (!id || !name) continue;
+    candidates.push({
+      cardId: id,
+      name,
+      setCode: setCode ?? undefined,
+      number: number ?? undefined,
+      language,
+      confidence: 0.6,
+      imageUrl: imageUrl ?? undefined,
+    });
+    cards.push({
+      id,
+      name,
+      number: number ?? undefined,
+      rarity: typeof card.rarity === 'string' ? card.rarity : undefined,
+      set: set
+        ? {
+            id: typeof set.id === 'string' ? set.id : undefined,
+            name: typeof set.name === 'string' ? set.name : undefined,
+            printedTotal:
+              typeof set.printedTotal === 'number' || typeof set.printedTotal === 'string'
+                ? set.printedTotal
+                : undefined,
+          }
+        : undefined,
+      images: imageUrl ? { small: imageUrl } : undefined,
+    });
+  }
+  return { candidates, cards };
+}
+
+function buildCandidatesFromLines(lines: string[], language: Language, baseConfidence: number) {
+  const seen = new Set<string>();
+  const candidates: CandidateCard[] = [];
+  for (const line of lines) {
+    const normalized = normalizeText(line);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    const cardId = `${language}:${normalized.replace(/\s+/g, '-').toLowerCase()}`;
+    candidates.push({
+      cardId,
+      name: normalized,
+      confidence: Math.min(0.9, Math.max(0.2, baseConfidence)),
+      language,
+    });
+  }
+  return candidates;
 }
 
 @Controller('/recognize')
 export class RecognizeController {
+  constructor(private readonly cardService: CardService) {}
+
+  @Get('logs')
+  getLogs(@Query('limit') limit?: string) {
+    const parsed = Number(limit);
+    const safeLimit = Number.isFinite(parsed) ? Math.max(1, Math.min(200, parsed)) : 50;
+    return {
+      count: recognitionLogs.length,
+      items: recognitionLogs.slice(-safeLimit).reverse(),
+    };
+  }
+
   @Post()
-  recognize(@Body() body: RecognizeRequest): RecognizeResponse {
+  async recognize(@Body() body: RecognizeRequest): Promise<RecognizeResponse> {
     if (!body?.imageBase64 || typeof body.imageBase64 !== 'string') {
       throw new BadRequestException('imageBase64 is required');
     }
     const startedAt = Date.now();
     const { buffer, mime } = decodeBase64Image(body.imageBase64);
     const hint = body.hint ?? {};
-    const ocr = runOcrRoiStub(buffer, hint);
-    const embedding = runEmbeddingSearchStub(buffer, DEFAULT_TOP_K);
-    const candidates = embedding.candidates.map((candidate) => ({
-      ...candidate,
-      language: hint.language ?? 'EN',
-    }));
+    const language = hint.language ?? 'EN';
+    const imageHash = hashImage(buffer);
+    const imageSize = getImageSize(buffer);
+    const ocr = await runOcr(buffer, language);
+    const ocrTopSmall = imageSize
+      ? await runOcr(
+          buffer,
+          language,
+          clampRect(
+            {
+              left: 0,
+              top: 0,
+              width: imageSize.width,
+              height: Math.round(imageSize.height * OCR_TOP_SMALL_RATIO),
+            },
+            imageSize,
+          ),
+        )
+      : null;
+    const ocrTopLarge = imageSize
+      ? await runOcr(
+          buffer,
+          language,
+          clampRect(
+            {
+              left: 0,
+              top: 0,
+              width: imageSize.width,
+              height: Math.round(imageSize.height * OCR_TOP_LARGE_RATIO),
+            },
+            imageSize,
+          ),
+        )
+      : null;
+    const ocrMid = imageSize
+      ? await runOcr(
+          buffer,
+          language,
+          clampRect(
+            {
+              left: 0,
+              top: Math.round(imageSize.height * 0.35),
+              width: imageSize.width,
+              height: Math.round(imageSize.height * OCR_MID_RATIO),
+            },
+            imageSize,
+          ),
+        )
+      : null;
 
-    const best = candidates[0];
+    const candidateLines = extractCandidateLines(
+      [ocrTopSmall, ocrTopLarge, ocrMid, ocr].filter(Boolean) as OcrResult[],
+    );
+    let candidates: CandidateCard[] = [];
+    if (language === 'EN' && candidateLines.length > 0) {
+      const primaryQuery = candidateLines[0];
+      try {
+        const result = await fetchPokemonTcgCandidates(primaryQuery, DEFAULT_TOP_K, language);
+        if (result.cards.length > 0) {
+          const cardMappings = await Promise.all(
+            result.cards.map(async (card) => {
+              const identity = await this.cardService.upsertFromPokemonTcg(card, language);
+              await this.cardService.upsertPokemonTcgMap(card.id, identity.id);
+              return { cardId: card.id, identityId: identity.id };
+            }),
+          );
+          const mappingByCardId = new Map(
+            cardMappings.map((entry) => [entry.cardId, entry.identityId]),
+          );
+          candidates = result.candidates.map((candidate) => ({
+            ...candidate,
+            identityId: mappingByCardId.get(candidate.cardId),
+          }));
+        } else {
+          candidates = result.candidates;
+        }
+      } catch (error) {
+        candidates = [];
+      }
+    }
+
+    if (candidates.length === 0) {
+      candidates = buildCandidatesFromLines(candidateLines, language, ocr.confidence);
+    }
+
+    const trimmedCandidates = candidates.slice(0, DEFAULT_TOP_K);
+
+    const best = trimmedCandidates[0];
     const elapsedMs = Date.now() - startedAt;
     const logEntry: RecognitionLogEntry = {
       id: `rec_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       imageBytes: buffer.length,
       predictedCardId: best?.cardId,
-      candidates: candidates.map((candidate) => ({
+      candidates: trimmedCandidates.map((candidate) => ({
         cardId: candidate.cardId,
         confidence: candidate.confidence,
       })),
@@ -124,22 +446,29 @@ export class RecognizeController {
 
     return {
       best,
-      candidates,
+      candidates: trimmedCandidates,
+      needsUserPick: logEntry.confidence < LOW_CONFIDENCE_THRESHOLD,
       debug: {
-        note: 'stub: decode + size check + ocr/embedding placeholders',
+        note: 'decode + ocr + candidate search (tcgplayer for EN when available)',
         receivedBytes: body.imageBase64?.length ?? 0,
         decodedBytes: buffer.length,
         mime,
         hint,
         ocr,
+        ocrTopSmall: ocrTopSmall ?? undefined,
+        ocrTopLarge: ocrTopLarge ?? undefined,
+        ocrMid: ocrMid ?? undefined,
+        imageSize,
+        candidateLines,
         embedding: {
-          topK: candidates.length,
-          embeddingBytes: embedding.embeddingBytes,
+          topK: trimmedCandidates.length,
+          embeddingBytes: buffer.length,
+          imageHash,
         },
         logId: logEntry.id,
         confidence: logEntry.confidence,
         isLowConfidence: logEntry.confidence < LOW_CONFIDENCE_THRESHOLD,
-        steps: ['decode', 'size-check', 'ocr-roi:stub', 'embedding:stub'],
+        steps: ['decode', 'size-check', 'ocr', 'candidate-search'],
         elapsedMs,
       },
     };
