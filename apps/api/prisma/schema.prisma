@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Language {
+  KO
+  JA
+  EN
+}
+
+enum Market {
+  US
+  JP
+  KR
+}
+
+enum CardVariant {
+  NORMAL
+  HOLOFOIL
+  REVERSE_HOLOFOIL
+  FULL_ART
+  ALT_ART
+  SECRET
+  PROMO
+  OTHER
+}
+
+enum ExternalProvider {
+  POKEMONTCG
+  TCGPLAYER
+  RAKUTEN
+  NAVER
+}
+
+enum PriceType {
+  LISTING
+  AGGREGATED
+  SOLD
+}
+
+model CardIdentity {
+  id               String              @id @default(cuid())
+  name             String
+  nameNormalized   String
+  language         Language
+  setCode          String
+  setName          String?
+  collectorNumber  String
+  collectorTotal   Int?
+  variant          CardVariant
+  rarity           String?
+  imageUrl         String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  externalMaps     ExternalProductMap[]
+
+  @@unique([language, setCode, collectorNumber, variant], name: "card_identity_unique")
+  @@index([nameNormalized])
+}
+
+model ExternalProductMap {
+  id              String         @id @default(cuid())
+  cardIdentityId  String
+  provider        ExternalProvider
+  market          Market
+  externalId      String
+  externalUrl     String?
+  matchMethod     String?
+  matchConfidence Float?
+  active          Boolean        @default(true)
+  meta            Json?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  cardIdentity    CardIdentity   @relation(fields: [cardIdentityId], references: [id], onDelete: Cascade)
+  priceSnapshots  PriceSnapshot[]
+
+  @@unique([provider, externalId], name: "external_provider_unique")
+  @@index([cardIdentityId, provider, market])
+}
+
+model PriceSnapshot {
+  id                   String         @id @default(cuid())
+  externalProductMapId String
+  market               Market
+  currency             String
+  source               ExternalProvider
+  priceType            PriceType
+  low                  Float?
+  high                 Float?
+  capturedAt           DateTime
+  createdAt            DateTime       @default(now())
+  raw                  Json?
+  externalProductMap   ExternalProductMap @relation(fields: [externalProductMapId], references: [id], onDelete: Cascade)
+
+  @@index([externalProductMapId, capturedAt(sort: Desc)])
+}
