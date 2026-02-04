@@ -417,7 +417,10 @@ export class PriceService {
 
     const card = await this.prisma.cardIdentity.findUnique({ where: { id: cardId } });
     if (!card) {
-      throw new BadRequestException('card identity not found');
+      const stub = this.getStubPrice(cardId, market);
+      this.priceCache.set(cacheKey, { data: stub, expiresAt: Date.now() + PRICE_CACHE_TTL_MS });
+      this.snapshots.push({ ...stub, cachedAt: new Date().toISOString() });
+      return stub;
     }
 
     const map = await this.getOrCreateExternalMap(card, market);
