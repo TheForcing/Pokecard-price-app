@@ -141,6 +141,10 @@ function hasLetter(value: string): boolean {
   return /\p{L}/u.test(value);
 }
 
+function hasHangul(value: string): boolean {
+  return /[\u3131-\u318E\uAC00-\uD7A3]/u.test(value);
+}
+
 function isLikelyNameLine(value: string): boolean {
   const letters = countMatches(value, /\p{L}/gu);
   const digits = countMatches(value, /\p{N}/gu);
@@ -148,6 +152,47 @@ function isLikelyNameLine(value: string): boolean {
   if (!total) return false;
   if (letters < 2) return false;
   return letters / total >= 0.4;
+}
+
+function scoreCandidateLine(value: string): number {
+  const trimmed = value.trim();
+  if (!trimmed) return -1;
+  const letters = countMatches(trimmed, /\p{L}/gu);
+  const digits = countMatches(trimmed, /\p{N}/gu);
+  const total = letters + digits;
+  if (!total) return -1;
+  const tokens = trimmed.split(' ').filter(Boolean);
+  const shortTokens = tokens.filter((token) => token.length <= 2).length;
+  const longTokens = tokens.filter((token) => token.length >= 4).length;
+  const letterRatio = letters / total;
+  let score = letterRatio;
+  score += Math.min(0.3, longTokens * 0.08);
+  score -= shortTokens * 0.05;
+  score -= digits * 0.02;
+  if (tokens.length >= 1 && tokens.length <= 4) score += 0.1;
+  if (trimmed.length > 30) score -= 0.1;
+  if (/\b(hp|vstar|vmax|gx|ex|trainer|energy)\b/i.test(trimmed)) score -= 0.05;
+  return score;
+}
+
+function rankCandidateLines(lines: string[]) {
+  const scored = lines
+    .map((line) => ({ line, score: scoreCandidateLine(line) }))
+    .filter(({ line, score }) => hasLetter(line) && (isLikelyNameLine(line) || score >= 0.35))
+    .sort((a, b) => b.score - a.score);
+  const seen = new Set<string>();
+  const ranked: string[] = [];
+  for (const { line } of scored) {
+    if (seen.has(line)) continue;
+    seen.add(line);
+    ranked.push(line);
+  }
+  return ranked;
+}
+
+function bestLineScore(lines: string[]): number {
+  if (lines.length === 0) return -1;
+  return Math.max(...lines.map((line) => scoreCandidateLine(line)));
 }
 
 function hashImage(buffer: Buffer): string {
@@ -192,16 +237,14 @@ function extractCandidateLinesFromOcr(ocr: OcrResult) {
   const normalizedLines = ocr.lines
     .map((line) => normalizeText(line))
     .filter((line) => line.length >= OCR_MIN_CHARACTERS);
-  const letterLines = normalizedLines.filter((line) => hasLetter(line) && isLikelyNameLine(line));
-  if (letterLines.length > 0) return letterLines.slice(0, OCR_MAX_LINES);
+  const rankedLines = rankCandidateLines(normalizedLines);
+  if (rankedLines.length > 0) return rankedLines.slice(0, OCR_MAX_LINES);
 
   const fallbackLines = ocr.rawLines
     .map((line) => normalizeText(line))
     .filter((line) => line.length >= OCR_MIN_CHARACTERS);
-  const fallbackLetterLines = fallbackLines.filter(
-    (line) => hasLetter(line) && isLikelyNameLine(line),
-  );
-  if (fallbackLetterLines.length > 0) return fallbackLetterLines.slice(0, OCR_MAX_LINES);
+  const fallbackRankedLines = rankCandidateLines(fallbackLines);
+  if (fallbackRankedLines.length > 0) return fallbackRankedLines.slice(0, OCR_MAX_LINES);
 
   const normalizedText = normalizeText(ocr.rawText);
   if (!normalizedText) return normalizedLines.slice(0, OCR_MAX_LINES);
@@ -209,17 +252,20 @@ function extractCandidateLinesFromOcr(ocr: OcrResult) {
     .split(' ')
     .filter((token) => token.length >= OCR_MIN_CHARACTERS)
     .filter((token) => hasLetter(token));
-  if (tokenCandidates.length > 0) return tokenCandidates.slice(0, OCR_MAX_LINES);
+  const rankedTokens = rankCandidateLines(tokenCandidates);
+  if (rankedTokens.length > 0) return rankedTokens.slice(0, OCR_MAX_LINES);
 
   return normalizedLines.slice(0, OCR_MAX_LINES);
 }
 
 function extractCandidateLines(ocrs: OcrResult[]) {
+  const combined: string[] = [];
   for (const ocr of ocrs) {
     const lines = extractCandidateLinesFromOcr(ocr);
-    if (lines.length > 0) return lines;
+    if (lines.length > 0) combined.push(...lines);
   }
-  return ocrs[0]?.lines ?? [];
+  if (combined.length === 0) return ocrs[0]?.lines ?? [];
+  return rankCandidateLines(combined).slice(0, OCR_MAX_LINES);
 }
 
 type PokemonTcgCard = {
@@ -391,18 +437,86 @@ export class RecognizeController {
         )
       : null;
 
-    const candidateLines = extractCandidateLines(
-      [ocrTopSmall, ocrTopLarge, ocrMid, ocr].filter(Boolean) as OcrResult[],
-    );
+    const ocrResults = [ocrTopSmall, ocrTopLarge, ocrMid, ocr].filter(Boolean) as OcrResult[];
+    let candidateLines = extractCandidateLines(ocrResults);
+    let selectedLanguage = language;
+
+    if (language === 'EN') {
+      const enScore = bestLineScore(candidateLines);
+      const shouldTryKorean = ocr.confidence < 0.35 || candidateLines.length === 0;
+      if (shouldTryKorean) {
+        const ocrKo = await runOcr(buffer, 'KO');
+        const ocrKoTopSmall = imageSize
+          ? await runOcr(
+              buffer,
+              'KO',
+              clampRect(
+                {
+                  left: 0,
+                  top: 0,
+                  width: imageSize.width,
+                  height: Math.round(imageSize.height * OCR_TOP_SMALL_RATIO),
+                },
+                imageSize,
+              ),
+            )
+          : null;
+        const ocrKoTopLarge = imageSize
+          ? await runOcr(
+              buffer,
+              'KO',
+              clampRect(
+                {
+                  left: 0,
+                  top: 0,
+                  width: imageSize.width,
+                  height: Math.round(imageSize.height * OCR_TOP_LARGE_RATIO),
+                },
+                imageSize,
+              ),
+            )
+          : null;
+        const ocrKoMid = imageSize
+          ? await runOcr(
+              buffer,
+              'KO',
+              clampRect(
+                {
+                  left: 0,
+                  top: Math.round(imageSize.height * 0.35),
+                  width: imageSize.width,
+                  height: Math.round(imageSize.height * OCR_MID_RATIO),
+                },
+                imageSize,
+              ),
+            )
+          : null;
+        const koResults = [ocrKoTopSmall, ocrKoTopLarge, ocrKoMid, ocrKo].filter(
+          Boolean,
+        ) as OcrResult[];
+        const koCandidateLines = extractCandidateLines(koResults);
+        const koScore = bestLineScore(koCandidateLines);
+        const koHasHangul = koCandidateLines.some((line) => hasHangul(line));
+        if (koCandidateLines.length > 0 && (koHasHangul || koScore > enScore + 0.05)) {
+          candidateLines = koCandidateLines;
+          selectedLanguage = 'KO';
+        }
+      }
+    }
+
     let candidates: CandidateCard[] = [];
-    if (language === 'EN' && candidateLines.length > 0) {
+    if (selectedLanguage === 'EN' && candidateLines.length > 0) {
       const primaryQuery = candidateLines[0];
       try {
-        const result = await fetchPokemonTcgCandidates(primaryQuery, DEFAULT_TOP_K, language);
+        const result = await fetchPokemonTcgCandidates(
+          primaryQuery,
+          DEFAULT_TOP_K,
+          selectedLanguage,
+        );
         if (result.cards.length > 0) {
           const cardMappings = await Promise.all(
             result.cards.map(async (card) => {
-              const identity = await this.cardService.upsertFromPokemonTcg(card, language);
+              const identity = await this.cardService.upsertFromPokemonTcg(card, selectedLanguage);
               await this.cardService.upsertPokemonTcgMap(card.id, identity.id);
               return { cardId: card.id, identityId: identity.id };
             }),
@@ -423,7 +537,7 @@ export class RecognizeController {
     }
 
     if (candidates.length === 0) {
-      candidates = buildCandidatesFromLines(candidateLines, language, ocr.confidence);
+      candidates = buildCandidatesFromLines(candidateLines, selectedLanguage, ocr.confidence);
     }
 
     const trimmedCandidates = candidates.slice(0, DEFAULT_TOP_K);
@@ -454,6 +568,7 @@ export class RecognizeController {
         decodedBytes: buffer.length,
         mime,
         hint,
+        selectedLanguage,
         ocr,
         ocrTopSmall: ocrTopSmall ?? undefined,
         ocrTopLarge: ocrTopLarge ?? undefined,
