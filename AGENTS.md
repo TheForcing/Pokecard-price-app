@@ -53,9 +53,11 @@ changes scoped to the relevant package.
 
 ### Tests
 
-- There is no test runner configured in this repo yet.
-- No single-test command is available until a test framework is added.
-- If you add tests, update this section with the exact single-test command.
+- Workspace tests: `pnpm test`
+- Web tests: `pnpm -C apps/web test`
+- API tests: `pnpm -C apps/api test`
+- Shared tests: `pnpm -C packages/shared test`
+- Single test file: `pnpm -C packages/shared test -- tests/basic.test.ts`
 
 ## Runtime URLs and env
 
