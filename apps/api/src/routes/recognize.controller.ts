@@ -15,6 +15,7 @@ import type {
   RecognizeResponse,
 } from '@pokecard/shared';
 import { createHash } from 'crypto';
+import sharp from 'sharp';
 import Tesseract, { type RecognizeResult } from 'tesseract.js';
 import { CardService } from '../services/card.service.js';
 
@@ -23,9 +24,8 @@ const DEFAULT_TOP_K = 10;
 const LOW_CONFIDENCE_THRESHOLD = 0.5;
 const OCR_MAX_LINES = 24;
 const OCR_MIN_CHARACTERS = 3;
-const OCR_TOP_SMALL_RATIO = 0.28;
-const OCR_TOP_LARGE_RATIO = 0.45;
-const OCR_MID_RATIO = 0.25;
+const OCR_NAME_OFFSET_RATIO = 0.12;
+const OCR_NAME_HEIGHT_RATIO = 0.22;
 
 const OCR_LANGUAGE_MAP: Record<Language, string> = {
   EN: 'eng',
@@ -75,6 +75,14 @@ function decodeBase64Image(data: string): { buffer: Buffer; mime?: string } {
     throw new BadRequestException('imageBase64 is too large');
   }
   return { buffer, mime };
+}
+
+async function preprocessForOcr(buffer: Buffer): Promise<Buffer> {
+  try {
+    return await sharp(buffer).grayscale().normalize().sharpen().threshold(170).toBuffer();
+  } catch (error) {
+    return buffer;
+  }
 }
 
 function normalizeText(value: string): string {
@@ -154,6 +162,14 @@ function isLikelyNameLine(value: string): boolean {
   return letters / total >= 0.4;
 }
 
+function hasAlphaToken(value: string, minLength: number) {
+  const tokens = value
+    .split(' ')
+    .map((token) => token.trim())
+    .filter(Boolean);
+  return tokens.some((token) => /[A-Za-z]/.test(token) && token.length >= minLength);
+}
+
 function scoreCandidateLine(value: string): number {
   const trimmed = value.trim();
   if (!trimmed) return -1;
@@ -178,7 +194,10 @@ function scoreCandidateLine(value: string): number {
 function rankCandidateLines(lines: string[]) {
   const scored = lines
     .map((line) => ({ line, score: scoreCandidateLine(line) }))
-    .filter(({ line, score }) => hasLetter(line) && (isLikelyNameLine(line) || score >= 0.35))
+    .filter(
+      ({ line, score }) =>
+        hasLetter(line) && hasAlphaToken(line, 3) && (isLikelyNameLine(line) || score >= 0.35),
+    )
     .sort((a, b) => b.score - a.score);
   const seen = new Set<string>();
   const ranked: string[] = [];
@@ -386,114 +405,53 @@ export class RecognizeController {
     }
     const startedAt = Date.now();
     const { buffer, mime } = decodeBase64Image(body.imageBase64);
+    const ocrBuffer = await preprocessForOcr(buffer);
     const hint = body.hint ?? {};
     const language = hint.language ?? 'EN';
+    const allowLanguageFallback = !hint.language;
     const imageHash = hashImage(buffer);
     const imageSize = getImageSize(buffer);
-    const ocr = await runOcr(buffer, language);
-    const ocrTopSmall = imageSize
+    const ocr = await runOcr(ocrBuffer, language);
+    const ocrNameBand = imageSize
       ? await runOcr(
-          buffer,
+          ocrBuffer,
           language,
           clampRect(
             {
               left: 0,
-              top: 0,
+              top: Math.round(imageSize.height * OCR_NAME_OFFSET_RATIO),
               width: imageSize.width,
-              height: Math.round(imageSize.height * OCR_TOP_SMALL_RATIO),
+              height: Math.round(imageSize.height * OCR_NAME_HEIGHT_RATIO),
             },
             imageSize,
           ),
         )
       : null;
-    const ocrTopLarge = imageSize
-      ? await runOcr(
-          buffer,
-          language,
-          clampRect(
-            {
-              left: 0,
-              top: 0,
-              width: imageSize.width,
-              height: Math.round(imageSize.height * OCR_TOP_LARGE_RATIO),
-            },
-            imageSize,
-          ),
-        )
-      : null;
-    const ocrMid = imageSize
-      ? await runOcr(
-          buffer,
-          language,
-          clampRect(
-            {
-              left: 0,
-              top: Math.round(imageSize.height * 0.35),
-              width: imageSize.width,
-              height: Math.round(imageSize.height * OCR_MID_RATIO),
-            },
-            imageSize,
-          ),
-        )
-      : null;
-
-    const ocrResults = [ocrTopSmall, ocrTopLarge, ocrMid, ocr].filter(Boolean) as OcrResult[];
+    const ocrResults = [ocrNameBand ?? ocr].filter(Boolean) as OcrResult[];
     let candidateLines = extractCandidateLines(ocrResults);
     let selectedLanguage = language;
 
-    if (language === 'EN') {
+    if (language === 'EN' && allowLanguageFallback) {
       const enScore = bestLineScore(candidateLines);
       const shouldTryKorean = ocr.confidence < 0.35 || candidateLines.length === 0;
       if (shouldTryKorean) {
-        const ocrKo = await runOcr(buffer, 'KO');
-        const ocrKoTopSmall = imageSize
+        const ocrKo = await runOcr(ocrBuffer, 'KO');
+        const ocrKoNameBand = imageSize
           ? await runOcr(
-              buffer,
+              ocrBuffer,
               'KO',
               clampRect(
                 {
                   left: 0,
-                  top: 0,
+                  top: Math.round(imageSize.height * OCR_NAME_OFFSET_RATIO),
                   width: imageSize.width,
-                  height: Math.round(imageSize.height * OCR_TOP_SMALL_RATIO),
+                  height: Math.round(imageSize.height * OCR_NAME_HEIGHT_RATIO),
                 },
                 imageSize,
               ),
             )
           : null;
-        const ocrKoTopLarge = imageSize
-          ? await runOcr(
-              buffer,
-              'KO',
-              clampRect(
-                {
-                  left: 0,
-                  top: 0,
-                  width: imageSize.width,
-                  height: Math.round(imageSize.height * OCR_TOP_LARGE_RATIO),
-                },
-                imageSize,
-              ),
-            )
-          : null;
-        const ocrKoMid = imageSize
-          ? await runOcr(
-              buffer,
-              'KO',
-              clampRect(
-                {
-                  left: 0,
-                  top: Math.round(imageSize.height * 0.35),
-                  width: imageSize.width,
-                  height: Math.round(imageSize.height * OCR_MID_RATIO),
-                },
-                imageSize,
-              ),
-            )
-          : null;
-        const koResults = [ocrKoTopSmall, ocrKoTopLarge, ocrKoMid, ocrKo].filter(
-          Boolean,
-        ) as OcrResult[];
+        const koResults = [ocrKoNameBand ?? ocrKo].filter(Boolean) as OcrResult[];
         const koCandidateLines = extractCandidateLines(koResults);
         const koScore = bestLineScore(koCandidateLines);
         const koHasHangul = koCandidateLines.some((line) => hasHangul(line));
@@ -506,33 +464,35 @@ export class RecognizeController {
 
     let candidates: CandidateCard[] = [];
     if (selectedLanguage === 'EN' && candidateLines.length > 0) {
-      const primaryQuery = candidateLines[0];
-      try {
-        const result = await fetchPokemonTcgCandidates(
-          primaryQuery,
-          DEFAULT_TOP_K,
-          selectedLanguage,
-        );
-        if (result.cards.length > 0) {
-          const cardMappings = await Promise.all(
-            result.cards.map(async (card) => {
-              const identity = await this.cardService.upsertFromPokemonTcg(card, selectedLanguage);
-              await this.cardService.upsertPokemonTcgMap(card.id, identity.id);
-              return { cardId: card.id, identityId: identity.id };
-            }),
-          );
-          const mappingByCardId = new Map(
-            cardMappings.map((entry) => [entry.cardId, entry.identityId]),
-          );
-          candidates = result.candidates.map((candidate) => ({
-            ...candidate,
-            identityId: mappingByCardId.get(candidate.cardId),
-          }));
-        } else {
+      const queries = candidateLines.slice(0, 3);
+      for (const query of queries) {
+        try {
+          const result = await fetchPokemonTcgCandidates(query, DEFAULT_TOP_K, selectedLanguage);
+          if (result.cards.length > 0) {
+            const cardMappings = await Promise.all(
+              result.cards.map(async (card) => {
+                const identity = await this.cardService.upsertFromPokemonTcg(
+                  card,
+                  selectedLanguage,
+                );
+                await this.cardService.upsertPokemonTcgMap(card.id, identity.id);
+                return { cardId: card.id, identityId: identity.id };
+              }),
+            );
+            const mappingByCardId = new Map(
+              cardMappings.map((entry) => [entry.cardId, entry.identityId]),
+            );
+            candidates = result.candidates.map((candidate) => ({
+              ...candidate,
+              identityId: mappingByCardId.get(candidate.cardId),
+            }));
+            break;
+          }
           candidates = result.candidates;
+        } catch (error) {
+          candidates = [];
         }
-      } catch (error) {
-        candidates = [];
+        if (candidates.length > 0) break;
       }
     }
 
@@ -570,9 +530,7 @@ export class RecognizeController {
         hint,
         selectedLanguage,
         ocr,
-        ocrTopSmall: ocrTopSmall ?? undefined,
-        ocrTopLarge: ocrTopLarge ?? undefined,
-        ocrMid: ocrMid ?? undefined,
+        ocrNameBand: ocrNameBand ?? undefined,
         imageSize,
         candidateLines,
         embedding: {

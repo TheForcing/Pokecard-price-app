@@ -21,6 +21,7 @@
     "@prisma/client": "^5.18.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "sharp": "^0.33.5",
     "tesseract.js": "^5.1.0"
   },
   "devDependencies": {
