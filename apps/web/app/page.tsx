@@ -194,6 +194,8 @@ export default function HomePage() {
   const [manualResults, setManualResults] = useState<CardIdentity[]>([]);
   const [manualLoading, setManualLoading] = useState(false);
   const [manualSelected, setManualSelected] = useState<CardIdentity | null>(null);
+  const [showAllCandidates, setShowAllCandidates] = useState(false);
+  const [showAllManualResults, setShowAllManualResults] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -205,6 +207,14 @@ export default function HomePage() {
   const streamRef = useRef<MediaStream | null>(null);
 
   const candidates = useMemo(() => recognizeRes?.candidates ?? [], [recognizeRes]);
+  const displayedCandidates = useMemo(
+    () => (showAllCandidates ? candidates : candidates.slice(0, 5)),
+    [candidates, showAllCandidates],
+  );
+  const displayedManualResults = useMemo(
+    () => (showAllManualResults ? manualResults : manualResults.slice(0, 5)),
+    [manualResults, showAllManualResults],
+  );
   const isLowConfidence =
     (selected?.confidence != null && selected.confidence < LOW_CONFIDENCE_THRESHOLD) ||
     lowConfidence;
@@ -256,6 +266,7 @@ export default function HomePage() {
     setSelected(null);
     setPrice(null);
     setLowConfidence(false);
+    setShowAllCandidates(false);
     setFile(f);
     if (cameraActive) setCameraActive(false);
     setCropMode(false);
@@ -459,6 +470,7 @@ export default function HomePage() {
     setLoading(true);
     setError(null);
     setPrice(null);
+    setShowAllCandidates(false);
     try {
       const res = await fetch(`${API_BASE}/recognize`, {
         method: 'POST',
@@ -513,6 +525,7 @@ export default function HomePage() {
       if (!res.ok) throw new Error(`search failed: ${res.status}`);
       const data = (await res.json()) as { items: CardIdentity[] };
       setManualResults(data.items ?? []);
+      setShowAllManualResults(false);
       setManualSelected(null);
     } catch (e: any) {
       setError(e?.message ?? 'unknown error');
@@ -717,64 +730,103 @@ export default function HomePage() {
           {candidates.length === 0 ? (
             <p style={{ opacity: 0.7, marginTop: 10 }}>Run recognize to see candidates.</p>
           ) : (
-            <ul
-              style={{
-                listStyle: 'none',
-                padding: 0,
-                marginTop: 10,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 10,
-              }}
-            >
-              {candidates.map((c) => (
-                <li
-                  key={c.cardId}
-                  style={{
-                    border: '1px solid #eee',
-                    borderRadius: 10,
-                    padding: 10,
-                    background: selected?.cardId === c.cardId ? '#f7f7ff' : 'white',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                    <div>
-                      <div style={{ fontWeight: 600 }}>{c.name}</div>
-                      <div style={{ opacity: 0.75, fontSize: 12 }}>
-                        {c.setCode ?? '-'} / {c.number ?? '-'} / {c.language ?? '-'}
+            <>
+              <ul
+                style={{
+                  listStyle: 'none',
+                  padding: 0,
+                  marginTop: 10,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                }}
+              >
+                {displayedCandidates.map((c) => (
+                  <li
+                    key={c.cardId}
+                    style={{
+                      border: '1px solid #eee',
+                      borderRadius: 10,
+                      padding: 10,
+                      background: selected?.cardId === c.cardId ? '#f7f7ff' : 'white',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                        <div
+                          style={{
+                            width: 64,
+                            height: 88,
+                            borderRadius: 8,
+                            border: '1px solid #eee',
+                            background: '#fafafa',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            overflow: 'hidden',
+                            color: '#999',
+                            fontSize: 11,
+                          }}
+                        >
+                          {c.imageUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={c.imageUrl}
+                              alt={c.name}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                          ) : (
+                            'No image'
+                          )}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{c.name}</div>
+                          <div style={{ opacity: 0.75, fontSize: 12 }}>
+                            {c.setCode ?? '-'} / {c.number ?? '-'} / {c.language ?? '-'}
+                          </div>
+                          <div style={{ opacity: 0.75, fontSize: 12 }}>
+                            confidence: {c.confidence.toFixed(2)}
+                          </div>
+                        </div>
                       </div>
-                      <div style={{ opacity: 0.75, fontSize: 12 }}>
-                        confidence: {c.confidence.toFixed(2)}
-                      </div>
-                    </div>
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 8,
-                        alignItems: 'end',
-                      }}
-                    >
-                      <button
-                        onClick={() => {
-                          setSelected(c);
-                          setPrice(null);
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 8,
+                          alignItems: 'end',
                         }}
-                        style={{ height: 30 }}
                       >
-                        Select
-                      </button>
-                      <button
-                        onClick={() => fetchPrice(c.identityId ?? c.cardId)}
-                        style={{ height: 30 }}
-                      >
-                        Get Price
-                      </button>
+                        <button
+                          onClick={() => {
+                            setSelected(c);
+                            setPrice(null);
+                          }}
+                          style={{ height: 30 }}
+                        >
+                          Select
+                        </button>
+                        <button
+                          onClick={() => fetchPrice(c.identityId ?? c.cardId)}
+                          style={{ height: 30 }}
+                        >
+                          Get Price
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                  </li>
+                ))}
+              </ul>
+              {candidates.length > 5 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllCandidates((current) => !current)}
+                  style={{ marginTop: 8, height: 32 }}
+                >
+                  {showAllCandidates ? 'Show top 5' : 'Show all'}
+                </button>
+              )}
+            </>
           )}
         </div>
       </section>
@@ -834,61 +886,100 @@ export default function HomePage() {
         {manualResults.length === 0 ? (
           <p style={{ marginTop: 10, opacity: 0.7 }}>No manual results yet.</p>
         ) : (
-          <ul
-            style={{
-              listStyle: 'none',
-              padding: 0,
-              marginTop: 10,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 10,
-            }}
-          >
-            {manualResults.map((card) => (
-              <li
-                key={card.id}
-                style={{
-                  border: '1px solid #eee',
-                  borderRadius: 10,
-                  padding: 10,
-                  background: manualSelected?.id === card.id ? '#f7f7ff' : 'white',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                  <div>
-                    <div style={{ fontWeight: 600 }}>{card.name}</div>
-                    <div style={{ opacity: 0.75, fontSize: 12 }}>
-                      {card.language} / {card.setCode} / {card.collectorNumber} / {card.variant}
+          <>
+            <ul
+              style={{
+                listStyle: 'none',
+                padding: 0,
+                marginTop: 10,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+              }}
+            >
+              {displayedManualResults.map((card) => (
+                <li
+                  key={card.id}
+                  style={{
+                    border: '1px solid #eee',
+                    borderRadius: 10,
+                    padding: 10,
+                    background: manualSelected?.id === card.id ? '#f7f7ff' : 'white',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                      <div
+                        style={{
+                          width: 64,
+                          height: 88,
+                          borderRadius: 8,
+                          border: '1px solid #eee',
+                          background: '#fafafa',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          overflow: 'hidden',
+                          color: '#999',
+                          fontSize: 11,
+                        }}
+                      >
+                        {card.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={card.imageUrl}
+                            alt={card.name}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
+                        ) : (
+                          'No image'
+                        )}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{card.name}</div>
+                        <div style={{ opacity: 0.75, fontSize: 12 }}>
+                          {card.language} / {card.setCode} / {card.collectorNumber} / {card.variant}
+                        </div>
+                        {card.setName && (
+                          <div style={{ opacity: 0.7, fontSize: 12 }}>{card.setName}</div>
+                        )}
+                      </div>
                     </div>
-                    {card.setName && (
-                      <div style={{ opacity: 0.7, fontSize: 12 }}>{card.setName}</div>
-                    )}
-                  </div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 8,
-                      alignItems: 'end',
-                    }}
-                  >
-                    <button
-                      onClick={() => {
-                        setManualSelected(card);
-                        setPrice(null);
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 8,
+                        alignItems: 'end',
                       }}
-                      style={{ height: 30 }}
                     >
-                      Select
-                    </button>
-                    <button onClick={() => fetchPrice(card.id)} style={{ height: 30 }}>
-                      Get Price
-                    </button>
+                      <button
+                        onClick={() => {
+                          setManualSelected(card);
+                          setPrice(null);
+                        }}
+                        style={{ height: 30 }}
+                      >
+                        Select
+                      </button>
+                      <button onClick={() => fetchPrice(card.id)} style={{ height: 30 }}>
+                        Get Price
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
+            {manualResults.length > 5 && (
+              <button
+                type="button"
+                onClick={() => setShowAllManualResults((current) => !current)}
+                style={{ marginTop: 8, height: 32 }}
+              >
+                {showAllManualResults ? 'Show top 5' : 'Show all'}
+              </button>
+            )}
+          </>
         )}
       </section>
 
