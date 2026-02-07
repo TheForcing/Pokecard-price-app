@@ -21,5 +21,13 @@ URLs
 - Web: http://localhost:3000
 - API: http://localhost:4000
 
+Price provider env
+- US (TCGplayer): PRICE_PROVIDER_US_CLIENT_ID, PRICE_PROVIDER_US_CLIENT_SECRET
+  PRICE_PROVIDER_US_CATEGORY_ID (default 3), PRICE_PROVIDER_US_SOURCE (default TCGPLAYER)
+- JP (Rakuten): PRICE_PROVIDER_JP_APP_ID, PRICE_PROVIDER_JP_SOURCE (default RAKUTEN)
+- KR (Naver): PRICE_PROVIDER_KR_CLIENT_ID, PRICE_PROVIDER_KR_CLIENT_SECRET
+  PRICE_PROVIDER_KR_SOURCE (default NAVER)
+- Missing env values fall back to stub prices.
+
 Notes
 - Recognition + pricing are stubbed. Replace /recognize and /cards/:id/prices with your pipeline.
