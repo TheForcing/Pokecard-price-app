@@ -15,6 +15,7 @@ import type {
   RecognizeResponse,
 } from '@pokecard/shared';
 import { createHash } from 'crypto';
+import { createRequire } from 'module';
 import sharp from 'sharp';
 import Tesseract, { type RecognizeResult } from 'tesseract.js';
 import { CardService } from '../services/card.service.js';
@@ -26,6 +27,11 @@ const OCR_MAX_LINES = 24;
 const OCR_MIN_CHARACTERS = 3;
 const OCR_NAME_OFFSET_RATIO = 0.12;
 const OCR_NAME_HEIGHT_RATIO = 0.22;
+const OCR_NAME_BANDS = [
+  { offsetRatio: 0.08, heightRatio: 0.18 },
+  { offsetRatio: 0.12, heightRatio: 0.22 },
+  { offsetRatio: 0.16, heightRatio: 0.18 },
+];
 
 const OCR_LANGUAGE_MAP: Record<Language, string> = {
   EN: 'eng',
@@ -57,12 +63,51 @@ type OcrRectangle = {
   height: number;
 };
 
+type CropResult = {
+  buffer: Buffer;
+  size: ImageSize | null;
+  rect?: OcrRectangle;
+  method: 'none' | 'auto' | 'contour' | 'perspective';
+};
+
+type Point2 = { x: number; y: number };
+type CvSize = { width: number; height: number };
+type CvContour = {
+  area: number;
+  arcLength: (closed: boolean) => number;
+  approxPolyDP: (epsilon: number, closed: boolean) => CvContour;
+  getPoints: () => Point2[];
+};
+type CvMat = {
+  bgrToGray: () => CvMat;
+  gaussianBlur: (size: CvSize, sigma: number) => CvMat;
+  canny: (threshold1: number, threshold2: number) => CvMat;
+  findContours: (mode: number, method: number) => CvContour[];
+  warpPerspective: (transform: CvMat, size: CvSize) => CvMat;
+};
+type OpenCvLike = {
+  RETR_EXTERNAL: number;
+  CHAIN_APPROX_SIMPLE: number;
+  Size: new (width: number, height: number) => CvSize;
+  Point2: new (x: number, y: number) => Point2;
+  imdecode: (buffer: Buffer) => CvMat;
+  imencode: (ext: string, mat: CvMat) => Buffer;
+  getPerspectiveTransform: (src: Point2[], dst: Point2[]) => CvMat;
+};
+
+const require = createRequire(import.meta.url);
+
 type OcrResult = {
   text: string;
   rawText: string;
   rawLines: string[];
   lines: string[];
   confidence: number;
+};
+
+type OcrNameBandSpec = {
+  offsetRatio: number;
+  heightRatio: number;
 };
 
 function decodeBase64Image(data: string): { buffer: Buffer; mime?: string } {
@@ -131,6 +176,222 @@ function readJpegSize(buffer: Buffer): ImageSize | null {
 
 function getImageSize(buffer: Buffer): ImageSize | null {
   return readPngSize(buffer) ?? readJpegSize(buffer);
+}
+
+async function getImageSizeAsync(buffer: Buffer): Promise<ImageSize | null> {
+  const known = getImageSize(buffer);
+  if (known) return known;
+  try {
+    const meta = await sharp(buffer).metadata();
+    if (!meta.width || !meta.height) return null;
+    return { width: meta.width, height: meta.height };
+  } catch (error) {
+    return null;
+  }
+}
+
+function getOpenCv(): OpenCvLike | null {
+  try {
+    return require('opencv4nodejs') as OpenCvLike;
+  } catch (error) {
+    return null;
+  }
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function getLuminance(r: number, g: number, b: number): number {
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+async function autoCropCard(buffer: Buffer, size: ImageSize): Promise<CropResult> {
+  const maxEdge = 360;
+  const scale = Math.min(1, maxEdge / Math.max(size.width, size.height));
+  const scaledWidth = Math.max(1, Math.round(size.width * scale));
+  const scaledHeight = Math.max(1, Math.round(size.height * scale));
+  try {
+    const { data, info } = await sharp(buffer)
+      .resize(scaledWidth, scaledHeight)
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const channels = info.channels;
+    let minX = scaledWidth;
+    let minY = scaledHeight;
+    let maxX = 0;
+    let maxY = 0;
+    let found = false;
+    for (let y = 0; y < scaledHeight; y += 1) {
+      for (let x = 0; x < scaledWidth; x += 1) {
+        const offset = (y * scaledWidth + x) * channels;
+        const r = data[offset] ?? 0;
+        const g = data[offset + 1] ?? 0;
+        const b = data[offset + 2] ?? 0;
+        const lum = getLuminance(r, g, b);
+        const saturation = Math.max(r, g, b) - Math.min(r, g, b);
+        if (lum < 245 || saturation > 12) {
+          found = true;
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x);
+          maxY = Math.max(maxY, y);
+        }
+      }
+    }
+    if (!found) return { buffer, size, method: 'auto' };
+    const boxWidth = maxX - minX;
+    const boxHeight = maxY - minY;
+    if (boxWidth / scaledWidth < 0.5 || boxHeight / scaledHeight < 0.5) {
+      return { buffer, size, method: 'auto' };
+    }
+    const scaleBack = 1 / scale;
+    const padding = Math.round(12 * scaleBack);
+    const left = clampNumber(Math.round(minX * scaleBack) - padding, 0, size.width - 1);
+    const top = clampNumber(Math.round(minY * scaleBack) - padding, 0, size.height - 1);
+    const width = clampNumber(Math.round(boxWidth * scaleBack) + padding * 2, 1, size.width - left);
+    const height = clampNumber(
+      Math.round(boxHeight * scaleBack) + padding * 2,
+      1,
+      size.height - top,
+    );
+    const rect = { left, top, width, height };
+    const cropped = await sharp(buffer).extract(rect).toBuffer();
+    return { buffer: cropped, size: { width, height }, rect, method: 'auto' };
+  } catch (error) {
+    return { buffer, size, method: 'auto' };
+  }
+}
+
+function orderPoints(points: Point2[]): Point2[] {
+  const sums = points.map((p) => p.x + p.y);
+  const diffs = points.map((p) => p.x - p.y);
+  const topLeft = points[sums.indexOf(Math.min(...sums))];
+  const bottomRight = points[sums.indexOf(Math.max(...sums))];
+  const topRight = points[diffs.indexOf(Math.min(...diffs))];
+  const bottomLeft = points[diffs.indexOf(Math.max(...diffs))];
+  return [topLeft, topRight, bottomRight, bottomLeft];
+}
+
+function distance(a: Point2, b: Point2): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function boundingRectFromPoints(
+  points: Point2[],
+  size: ImageSize,
+  padding: number,
+): OcrRectangle | null {
+  if (!points.length) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const point of points) {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
+  if (maxX <= minX || maxY <= minY) return null;
+  const left = clampNumber(Math.round(minX) - padding, 0, size.width - 1);
+  const top = clampNumber(Math.round(minY) - padding, 0, size.height - 1);
+  const width = clampNumber(Math.round(maxX - minX) + padding * 2, 1, size.width - left);
+  const height = clampNumber(Math.round(maxY - minY) + padding * 2, 1, size.height - top);
+  return { left, top, width, height };
+}
+
+async function tryPerspectiveCrop(buffer: Buffer): Promise<CropResult | null> {
+  const cv = getOpenCv();
+  if (!cv) return null;
+  try {
+    const mat = cv.imdecode(buffer);
+    const gray = mat.bgrToGray();
+    const blurred = gray.gaussianBlur(new cv.Size(5, 5), 0);
+    const edges = blurred.canny(75, 200);
+    const contours = edges.findContours(cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+    if (!contours.length) return null;
+    const sorted = [...contours].sort((a, b) => b.area - a.area).slice(0, 5);
+    let bestQuad: Point2[] | null = null;
+    for (const contour of sorted) {
+      const peri = contour.arcLength(true);
+      const approx = contour.approxPolyDP(peri * 0.02, true);
+      const points = approx.getPoints();
+      if (points.length === 4) {
+        bestQuad = points;
+        break;
+      }
+    }
+    if (!bestQuad) return null;
+    const [tl, tr, br, bl] = orderPoints(bestQuad);
+    const width = Math.max(Math.round(distance(tl, tr)), Math.round(distance(bl, br)));
+    const height = Math.max(Math.round(distance(tl, bl)), Math.round(distance(tr, br)));
+    if (width < 50 || height < 50) return null;
+    const dst = [
+      new cv.Point2(0, 0),
+      new cv.Point2(width - 1, 0),
+      new cv.Point2(width - 1, height - 1),
+      new cv.Point2(0, height - 1),
+    ];
+    const transform = cv.getPerspectiveTransform([tl, tr, br, bl], dst);
+    const warped = mat.warpPerspective(transform, new cv.Size(width, height));
+    const out = cv.imencode('.jpg', warped);
+    return { buffer: out, size: { width, height }, method: 'perspective' };
+  } catch (error) {
+    return null;
+  }
+}
+
+async function tryContourCrop(buffer: Buffer, size: ImageSize): Promise<CropResult | null> {
+  const cv = getOpenCv();
+  if (!cv) return null;
+  try {
+    const mat = cv.imdecode(buffer);
+    const gray = mat.bgrToGray();
+    const blurred = gray.gaussianBlur(new cv.Size(5, 5), 0);
+    const edges = blurred.canny(75, 200);
+    const contours = edges.findContours(cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+    if (!contours.length) return null;
+    const sorted = [...contours].sort((a, b) => b.area - a.area).slice(0, 5);
+    const padding = Math.round(Math.min(size.width, size.height) * 0.02);
+    for (const contour of sorted) {
+      const points = contour.getPoints();
+      if (points.length < 4) continue;
+      const rect = boundingRectFromPoints(points, size, padding);
+      if (!rect) continue;
+      const areaRatio = (rect.width * rect.height) / (size.width * size.height);
+      if (areaRatio < 0.35) continue;
+      if (rect.width < 60 || rect.height < 60) continue;
+      const cropped = await sharp(buffer).extract(rect).toBuffer();
+      return {
+        buffer: cropped,
+        size: { width: rect.width, height: rect.height },
+        rect,
+        method: 'contour',
+      };
+    }
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function buildNameBandRects(size: ImageSize): OcrRectangle[] {
+  const specs: OcrNameBandSpec[] = OCR_NAME_BANDS.length
+    ? OCR_NAME_BANDS
+    : [{ offsetRatio: OCR_NAME_OFFSET_RATIO, heightRatio: OCR_NAME_HEIGHT_RATIO }];
+  return specs.map((spec) =>
+    clampRect(
+      {
+        left: 0,
+        top: Math.round(size.height * spec.offsetRatio),
+        width: size.width,
+        height: Math.round(size.height * spec.heightRatio),
+      },
+      size,
+    ),
+  );
 }
 
 function clampRect(rect: OcrRectangle, size: ImageSize): OcrRectangle {
@@ -277,6 +538,25 @@ function extractCandidateLinesFromOcr(ocr: OcrResult) {
   return normalizedLines.slice(0, OCR_MAX_LINES);
 }
 
+function selectBestOcr(ocrs: OcrResult[]): OcrResult | null {
+  if (ocrs.length === 0) return null;
+  let best = ocrs[0];
+  let bestScore = bestLineScore(extractCandidateLinesFromOcr(best));
+  let bestConfidence = best.confidence;
+  for (const ocr of ocrs.slice(1)) {
+    const score = bestLineScore(extractCandidateLinesFromOcr(ocr));
+    if (
+      score > bestScore + 0.01 ||
+      (Math.abs(score - bestScore) <= 0.01 && ocr.confidence > bestConfidence)
+    ) {
+      best = ocr;
+      bestScore = score;
+      bestConfidence = ocr.confidence;
+    }
+  }
+  return best;
+}
+
 function extractCandidateLines(ocrs: OcrResult[]) {
   const combined: string[] = [];
   for (const ocr of ocrs) {
@@ -405,28 +685,28 @@ export class RecognizeController {
     }
     const startedAt = Date.now();
     const { buffer, mime } = decodeBase64Image(body.imageBase64);
-    const ocrBuffer = await preprocessForOcr(buffer);
     const hint = body.hint ?? {};
     const language = hint.language ?? 'EN';
     const allowLanguageFallback = !hint.language;
     const imageHash = hashImage(buffer);
-    const imageSize = getImageSize(buffer);
+    const imageSize = await getImageSizeAsync(buffer);
+    const perspective = await tryPerspectiveCrop(buffer);
+    const contour = !perspective && imageSize ? await tryContourCrop(buffer, imageSize) : null;
+    const cropResult: CropResult = perspective
+      ? perspective
+      : contour
+        ? contour
+        : imageSize
+          ? await autoCropCard(buffer, imageSize)
+          : { buffer, size: null, method: 'none' };
+    const ocrBuffer = await preprocessForOcr(cropResult.buffer);
+    const ocrSize = cropResult.size ?? imageSize;
     const ocr = await runOcr(ocrBuffer, language);
-    const ocrNameBand = imageSize
-      ? await runOcr(
-          ocrBuffer,
-          language,
-          clampRect(
-            {
-              left: 0,
-              top: Math.round(imageSize.height * OCR_NAME_OFFSET_RATIO),
-              width: imageSize.width,
-              height: Math.round(imageSize.height * OCR_NAME_HEIGHT_RATIO),
-            },
-            imageSize,
-          ),
-        )
-      : null;
+    const nameBandRects = ocrSize ? buildNameBandRects(ocrSize) : [];
+    const nameBandOcrs = nameBandRects.length
+      ? await Promise.all(nameBandRects.map((rect) => runOcr(ocrBuffer, language, rect)))
+      : [];
+    const ocrNameBand = selectBestOcr(nameBandOcrs);
     const ocrResults = [ocrNameBand ?? ocr].filter(Boolean) as OcrResult[];
     let candidateLines = extractCandidateLines(ocrResults);
     let selectedLanguage = language;
@@ -436,21 +716,11 @@ export class RecognizeController {
       const shouldTryKorean = ocr.confidence < 0.35 || candidateLines.length === 0;
       if (shouldTryKorean) {
         const ocrKo = await runOcr(ocrBuffer, 'KO');
-        const ocrKoNameBand = imageSize
-          ? await runOcr(
-              ocrBuffer,
-              'KO',
-              clampRect(
-                {
-                  left: 0,
-                  top: Math.round(imageSize.height * OCR_NAME_OFFSET_RATIO),
-                  width: imageSize.width,
-                  height: Math.round(imageSize.height * OCR_NAME_HEIGHT_RATIO),
-                },
-                imageSize,
-              ),
-            )
-          : null;
+        const koNameBandRects = ocrSize ? buildNameBandRects(ocrSize) : [];
+        const koNameBandOcrs = koNameBandRects.length
+          ? await Promise.all(koNameBandRects.map((rect) => runOcr(ocrBuffer, 'KO', rect)))
+          : [];
+        const ocrKoNameBand = selectBestOcr(koNameBandOcrs);
         const koResults = [ocrKoNameBand ?? ocrKo].filter(Boolean) as OcrResult[];
         const koCandidateLines = extractCandidateLines(koResults);
         const koScore = bestLineScore(koCandidateLines);
@@ -532,6 +802,9 @@ export class RecognizeController {
         ocr,
         ocrNameBand: ocrNameBand ?? undefined,
         imageSize,
+        cropRect: cropResult.rect ?? null,
+        cropMethod: cropResult.method,
+        ocrSize,
         candidateLines,
         embedding: {
           topK: trimmedCandidates.length,
@@ -541,7 +814,7 @@ export class RecognizeController {
         logId: logEntry.id,
         confidence: logEntry.confidence,
         isLowConfidence: logEntry.confidence < LOW_CONFIDENCE_THRESHOLD,
-        steps: ['decode', 'size-check', 'ocr', 'candidate-search'],
+        steps: ['decode', 'size-check', 'crop', 'ocr', 'candidate-search'],
         elapsedMs,
       },
     };
