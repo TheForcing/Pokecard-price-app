@@ -8,6 +8,7 @@ import {
   Query,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import type { CardIdentity as PrismaCardIdentity } from '@prisma/client';
 import type {
   CandidateCard,
   Language,
@@ -15,7 +16,11 @@ import type {
   RecognizeResponse,
 } from '@pokecard/shared';
 import { createHash } from 'crypto';
+import { spawn } from 'child_process';
+import { promises as fs } from 'fs';
 import { createRequire } from 'module';
+import os from 'os';
+import path from 'path';
 import sharp from 'sharp';
 import Tesseract, { type RecognizeResult } from 'tesseract.js';
 import { CardService } from '../services/card.service.js';
@@ -27,6 +32,8 @@ const OCR_MAX_LINES = 24;
 const OCR_MIN_CHARACTERS = 3;
 const OCR_NAME_OFFSET_RATIO = 0.12;
 const OCR_NAME_HEIGHT_RATIO = 0.22;
+const OCR_NAME_LEFT_WIDTH_RATIO = 0.72;
+const OCR_NAME_MIN_LEFT_WIDTH = 140;
 const OCR_NAME_BANDS = [
   { offsetRatio: 0.08, heightRatio: 0.18 },
   { offsetRatio: 0.12, heightRatio: 0.22 },
@@ -37,6 +44,12 @@ const OCR_LANGUAGE_MAP: Record<Language, string> = {
   EN: 'eng',
   JA: 'jpn+eng',
   KO: 'kor+eng',
+};
+
+const EASYOCR_LANGUAGE_MAP: Record<Language, string> = {
+  EN: 'en',
+  JA: 'ja',
+  KO: 'ko',
 };
 
 type RecognitionLogEntry = {
@@ -124,7 +137,18 @@ function decodeBase64Image(data: string): { buffer: Buffer; mime?: string } {
 
 async function preprocessForOcr(buffer: Buffer): Promise<Buffer> {
   try {
-    return await sharp(buffer).grayscale().normalize().sharpen().threshold(170).toBuffer();
+    const stats = await sharp(buffer).grayscale().stats();
+    const channel = stats.channels[0];
+    const mean = channel?.mean ?? 140;
+    const stdev = channel?.stdev ?? 45;
+    const threshold = Math.round(Math.min(200, Math.max(110, mean + (stdev < 45 ? 5 : 15))));
+    return await sharp(buffer)
+      .grayscale()
+      .normalize()
+      .median(1)
+      .sharpen()
+      .threshold(threshold)
+      .toBuffer();
   } catch (error) {
     return buffer;
   }
@@ -135,6 +159,190 @@ function normalizeText(value: string): string {
     .replace(/[^\p{L}\p{N}\s-]/gu, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+async function resolveEasyOcrScript(): Promise<string | null> {
+  const fromCwd = path.resolve(process.cwd(), 'scripts', 'run-easyocr.py');
+  try {
+    await fs.access(fromCwd);
+    return fromCwd;
+  } catch (error) {
+    const fallback = path.resolve(process.cwd(), '..', 'apps', 'api', 'scripts', 'run-easyocr.py');
+    try {
+      await fs.access(fallback);
+      return fallback;
+    } catch (fallbackError) {
+      return null;
+    }
+  }
+}
+
+function buildOcrResult(rawText: string, rawLines: string[], confidence: number): OcrResult {
+  const lines = rawLines
+    .map((line: string) => normalizeText(line))
+    .filter((line: string) => line.length >= OCR_MIN_CHARACTERS)
+    .slice(0, OCR_MAX_LINES);
+  return {
+    text: normalizeText(rawText),
+    rawText,
+    rawLines,
+    lines,
+    confidence,
+  };
+}
+
+async function runEasyOcr(
+  buffer: Buffer,
+  language: Language,
+  rectangle?: OcrRectangle,
+): Promise<OcrResult | null> {
+  const python = process.env.EASYOCR_PYTHON;
+  if (!python) return null;
+  const scriptPath = await resolveEasyOcrScript();
+  if (!scriptPath) return null;
+
+  let sourceBuffer = buffer;
+  if (rectangle) {
+    sourceBuffer = await sharp(buffer)
+      .extract({
+        left: rectangle.left,
+        top: rectangle.top,
+        width: rectangle.width,
+        height: rectangle.height,
+      })
+      .toBuffer();
+  }
+
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pokecard-ocr-'));
+  const imagePath = path.join(tmpDir, `easyocr-${Date.now()}.png`);
+  await fs.writeFile(imagePath, sourceBuffer);
+
+  try {
+    const lang = EASYOCR_LANGUAGE_MAP[language] ?? EASYOCR_LANGUAGE_MAP.EN;
+    const output = await new Promise<string>((resolve, reject) => {
+      const child = spawn(python, [scriptPath, imagePath, '--lang', lang], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (chunk) => {
+        stdout += chunk.toString();
+      });
+      child.stderr.on('data', (chunk) => {
+        stderr += chunk.toString();
+      });
+      child.on('error', (error) => reject(error));
+      child.on('close', (code) => {
+        if (code !== 0) {
+          reject(new Error(stderr.trim() || `easyocr failed with code ${code}`));
+          return;
+        }
+        resolve(stdout.trim());
+      });
+    });
+
+    const lines = output
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (lines.length === 0) return null;
+    const payload = JSON.parse(lines[lines.length - 1]) as {
+      rawText?: string;
+      rawLines?: string[];
+      confidence?: number;
+    };
+    const rawText = typeof payload.rawText === 'string' ? payload.rawText : '';
+    const rawLines = Array.isArray(payload.rawLines)
+      ? payload.rawLines.filter((line) => typeof line === 'string')
+      : [];
+    const confidence =
+      typeof payload.confidence === 'number' && Number.isFinite(payload.confidence)
+        ? payload.confidence
+        : 0;
+    return buildOcrResult(rawText, rawLines, confidence);
+  } catch (error) {
+    return null;
+  } finally {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+}
+
+const OCR_STOPWORDS: Record<Language, Set<string>> = {
+  EN: new Set([
+    'hp',
+    'basic',
+    'stage',
+    'vstar',
+    'vmax',
+    'ex',
+    'gx',
+    'trainer',
+    'energy',
+    'pokemon',
+    'card',
+    'rapid',
+    'strike',
+    'single',
+    'fusion',
+  ]),
+  JA: new Set(['hp', 'vstar', 'vmax', 'ex', 'gx']),
+  KO: new Set(['hp', 'vstar', 'vmax', 'ex', 'gx']),
+};
+
+function normalizeForMatch(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokenizeForMatch(value: string, language: Language): string[] {
+  const stopwords = OCR_STOPWORDS[language] ?? OCR_STOPWORDS.EN;
+  return normalizeForMatch(value)
+    .split(' ')
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2 && !stopwords.has(token));
+}
+
+function buildQueryVariants(value: string, language: Language): string[] {
+  const normalized = normalizeForMatch(value);
+  if (!normalized) return [];
+  const tokens = tokenizeForMatch(value, language);
+  const tokenQuery = tokens.join(' ');
+  const variants = new Set<string>();
+  if (normalized.length >= 3) variants.add(normalized);
+  if (tokenQuery.length >= 3) variants.add(tokenQuery);
+  return Array.from(variants);
+}
+
+function jaccardScore(a: string[], b: string[]): number {
+  if (a.length === 0 || b.length === 0) return 0;
+  const setA = new Set(a);
+  const setB = new Set(b);
+  let intersection = 0;
+  for (const token of setA) {
+    if (setB.has(token)) intersection += 1;
+  }
+  const union = setA.size + setB.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+function similarityScore(query: string, candidate: string, language: Language): number {
+  if (!query || !candidate) return 0;
+  const queryNorm = normalizeForMatch(query);
+  const candidateNorm = normalizeForMatch(candidate);
+  if (!queryNorm || !candidateNorm) return 0;
+  const queryTokens = tokenizeForMatch(queryNorm, language);
+  const candidateTokens = tokenizeForMatch(candidateNorm, language);
+  let score = jaccardScore(queryTokens, candidateTokens);
+  if (candidateNorm.startsWith(queryNorm)) score += 0.18;
+  else if (candidateNorm.includes(queryNorm)) score += 0.1;
+  const lengthDelta =
+    Math.abs(candidateNorm.length - queryNorm.length) /
+    Math.max(candidateNorm.length, queryNorm.length);
+  score -= Math.min(0.18, lengthDelta * 0.18);
+  return Math.max(0, Math.min(1, score));
 }
 
 function readPngSize(buffer: Buffer): ImageSize | null {
@@ -381,8 +589,9 @@ function buildNameBandRects(size: ImageSize): OcrRectangle[] {
   const specs: OcrNameBandSpec[] = OCR_NAME_BANDS.length
     ? OCR_NAME_BANDS
     : [{ offsetRatio: OCR_NAME_OFFSET_RATIO, heightRatio: OCR_NAME_HEIGHT_RATIO }];
-  return specs.map((spec) =>
-    clampRect(
+  const rects: OcrRectangle[] = [];
+  for (const spec of specs) {
+    const baseRect = clampRect(
       {
         left: 0,
         top: Math.round(size.height * spec.offsetRatio),
@@ -390,8 +599,28 @@ function buildNameBandRects(size: ImageSize): OcrRectangle[] {
         height: Math.round(size.height * spec.heightRatio),
       },
       size,
-    ),
-  );
+    );
+    rects.push(baseRect);
+
+    const leftWidth = Math.max(
+      OCR_NAME_MIN_LEFT_WIDTH,
+      Math.round(size.width * OCR_NAME_LEFT_WIDTH_RATIO),
+    );
+    if (leftWidth < size.width) {
+      rects.push(
+        clampRect(
+          {
+            left: 0,
+            top: baseRect.top,
+            width: leftWidth,
+            height: baseRect.height,
+          },
+          size,
+        ),
+      );
+    }
+  }
+  return rects;
 }
 
 function clampRect(rect: OcrRectangle, size: ImageSize): OcrRectangle {
@@ -483,7 +712,11 @@ async function runOcr(
   buffer: Buffer,
   language: Language,
   rectangle?: OcrRectangle,
+  sourceBuffer?: Buffer,
 ): Promise<OcrResult> {
+  const easyResult = await runEasyOcr(sourceBuffer ?? buffer, language, rectangle);
+  if (easyResult) return easyResult;
+
   const lang = OCR_LANGUAGE_MAP[language] ?? OCR_LANGUAGE_MAP.EN;
   let result: RecognizeResult;
   try {
@@ -499,18 +732,8 @@ async function runOcr(
   const rawLines = (result.data.lines ?? [])
     .map((line: { text: string }) => (typeof line.text === 'string' ? line.text : ''))
     .filter((line: string) => line.length > 0);
-  const lines = rawLines
-    .map((line: string) => normalizeText(line))
-    .filter((line: string) => line.length >= OCR_MIN_CHARACTERS)
-    .slice(0, OCR_MAX_LINES);
-
-  return {
-    text: normalizeText(rawText),
-    rawText,
-    rawLines,
-    lines,
-    confidence: typeof result.data.confidence === 'number' ? result.data.confidence / 100 : 0,
-  };
+  const confidence = typeof result.data.confidence === 'number' ? result.data.confidence / 100 : 0;
+  return buildOcrResult(rawText, rawLines, confidence);
 }
 
 function extractCandidateLinesFromOcr(ocr: OcrResult) {
@@ -664,6 +887,66 @@ function buildCandidatesFromLines(lines: string[], language: Language, baseConfi
   return candidates;
 }
 
+type ScoredLocalCandidate = {
+  candidate: CandidateCard;
+  score: number;
+};
+
+async function buildPostProcessedCandidates(
+  lines: string[],
+  language: Language,
+  cardService: CardService,
+): Promise<CandidateCard[]> {
+  const scoredById = new Map<string, ScoredLocalCandidate>();
+  const lineSamples = lines.slice(0, 5);
+  for (const line of lineSamples) {
+    const queries = buildQueryVariants(line, language);
+    for (const query of queries) {
+      if (!query) continue;
+      const matches: PrismaCardIdentity[] = await cardService.searchCards({
+        query,
+        language,
+        limit: 8,
+      });
+      for (const card of matches) {
+        const score = similarityScore(query, card.nameNormalized, language);
+        if (score <= 0) continue;
+        const confidence = Math.min(0.95, Math.max(0.35, score));
+        const candidate: CandidateCard = {
+          cardId: card.id,
+          identityId: card.id,
+          name: card.name,
+          setCode: card.setCode,
+          number: card.collectorNumber,
+          language,
+          variant: card.variant,
+          confidence,
+          imageUrl: card.imageUrl ?? undefined,
+        };
+        const existing = scoredById.get(card.id);
+        if (!existing || confidence > existing.candidate.confidence) {
+          scoredById.set(card.id, { candidate, score: confidence });
+        }
+      }
+    }
+  }
+  return Array.from(scoredById.values())
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => entry.candidate);
+}
+
+function mergeCandidates(primary: CandidateCard[], secondary: CandidateCard[]) {
+  const merged = new Map<string, CandidateCard>();
+  for (const candidate of [...primary, ...secondary]) {
+    const key = candidate.identityId ?? candidate.cardId;
+    const existing = merged.get(key);
+    if (!existing || candidate.confidence > existing.confidence) {
+      merged.set(key, candidate);
+    }
+  }
+  return Array.from(merged.values()).sort((a, b) => b.confidence - a.confidence);
+}
+
 @Controller('/recognize')
 export class RecognizeController {
   constructor(private readonly cardService: CardService) {}
@@ -701,10 +984,12 @@ export class RecognizeController {
           : { buffer, size: null, method: 'none' };
     const ocrBuffer = await preprocessForOcr(cropResult.buffer);
     const ocrSize = cropResult.size ?? imageSize;
-    const ocr = await runOcr(ocrBuffer, language);
+    const ocr = await runOcr(ocrBuffer, language, undefined, cropResult.buffer);
     const nameBandRects = ocrSize ? buildNameBandRects(ocrSize) : [];
     const nameBandOcrs = nameBandRects.length
-      ? await Promise.all(nameBandRects.map((rect) => runOcr(ocrBuffer, language, rect)))
+      ? await Promise.all(
+          nameBandRects.map((rect) => runOcr(ocrBuffer, language, rect, cropResult.buffer)),
+        )
       : [];
     const ocrNameBand = selectBestOcr(nameBandOcrs);
     const ocrResults = [ocrNameBand ?? ocr].filter(Boolean) as OcrResult[];
@@ -715,10 +1000,12 @@ export class RecognizeController {
       const enScore = bestLineScore(candidateLines);
       const shouldTryKorean = ocr.confidence < 0.35 || candidateLines.length === 0;
       if (shouldTryKorean) {
-        const ocrKo = await runOcr(ocrBuffer, 'KO');
+        const ocrKo = await runOcr(ocrBuffer, 'KO', undefined, cropResult.buffer);
         const koNameBandRects = ocrSize ? buildNameBandRects(ocrSize) : [];
         const koNameBandOcrs = koNameBandRects.length
-          ? await Promise.all(koNameBandRects.map((rect) => runOcr(ocrBuffer, 'KO', rect)))
+          ? await Promise.all(
+              koNameBandRects.map((rect) => runOcr(ocrBuffer, 'KO', rect, cropResult.buffer)),
+            )
           : [];
         const ocrKoNameBand = selectBestOcr(koNameBandOcrs);
         const koResults = [ocrKoNameBand ?? ocrKo].filter(Boolean) as OcrResult[];
@@ -768,6 +1055,15 @@ export class RecognizeController {
 
     if (candidates.length === 0) {
       candidates = buildCandidatesFromLines(candidateLines, selectedLanguage, ocr.confidence);
+    }
+
+    const postProcessed = await buildPostProcessedCandidates(
+      candidateLines,
+      selectedLanguage,
+      this.cardService,
+    );
+    if (postProcessed.length > 0) {
+      candidates = mergeCandidates(postProcessed, candidates);
     }
 
     const trimmedCandidates = candidates.slice(0, DEFAULT_TOP_K);

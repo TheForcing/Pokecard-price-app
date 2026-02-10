@@ -59,7 +59,7 @@ export class CardService {
     collectorNumber?: string;
     variant?: CardVariant;
     limit?: number;
-  }) {
+  }): Promise<PrismaCardIdentity[]> {
     const normalizedQuery = params.query ? normalizeName(params.query) : undefined;
     const where: Prisma.CardIdentityWhereInput = {
       ...(params.language ? { language: params.language } : {}),
