@@ -27,8 +27,11 @@
     "tesseract.js": "^5.1.0"
   },
   "devDependencies": {
+    "@nestjs/testing": "^10.4.7",
     "@types/node": "^20.11.30",
+    "@types/supertest": "^6.0.3",
     "prisma": "^5.18.0",
+    "supertest": "^7.1.4",
     "typescript": "^5.4.5",
     "vitest": "^1.6.0"
   }
