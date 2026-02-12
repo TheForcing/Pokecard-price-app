@@ -9,6 +9,35 @@ on:
 jobs:
   test-and-typecheck:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://pokecard:pokecard@localhost:5432/pokecard
+      REDIS_URL: redis://localhost:6379
+      RUN_DB_INTEGRATION_TESTS: 'true'
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pokecard
+          POSTGRES_PASSWORD: pokecard
+          POSTGRES_DB: pokecard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pokecard -d pokecard"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout
@@ -28,11 +57,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Prepare API test database
+        run: pnpm -C apps/api exec prisma db push
+
       - name: API tests (required)
         run: pnpm -C apps/api test
 
-      - name: Workspace tests
-        run: pnpm -r test
+      - name: Web and shared tests
+        run: pnpm -r --filter @pokecard/web --filter @pokecard/shared test
 
       - name: Workspace typecheck
         run: pnpm -r typecheck

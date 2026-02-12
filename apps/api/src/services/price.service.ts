@@ -2,6 +2,8 @@ import {
   BadGatewayException,
   BadRequestException,
   Injectable,
+  Logger,
+  OnModuleDestroy,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import type { Market, PriceResponse } from '@pokecard/shared';
@@ -13,13 +15,11 @@ import {
   type CardIdentity,
   type ExternalProductMap,
 } from '@prisma/client';
+import { createClient } from 'redis';
 import { PrismaService } from './prisma.service.js';
 
-const PRICE_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
-
-type PriceSnapshot = PriceResponse & {
-  cachedAt: string;
-};
+const DEFAULT_PRICE_CACHE_TTL_SECONDS = 2 * 60 * 60;
+const PRICE_CACHE_NAMESPACE = 'price:v1';
 
 function getEnvValue(name: string): string | undefined {
   const value = process.env[name];
@@ -28,10 +28,19 @@ function getEnvValue(name: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function parseCacheTtlSeconds(value: string | undefined): number {
+  if (!value) return DEFAULT_PRICE_CACHE_TTL_SECONDS;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_PRICE_CACHE_TTL_SECONDS;
+  return Math.floor(parsed);
+}
+
 type TcgplayerToken = {
   value: string;
   expiresAt: number;
 };
+
+type PriceRedisClient = ReturnType<typeof createClient>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object';
@@ -46,13 +55,137 @@ function toNumber(value: unknown): number | null {
   return null;
 }
 
+function isPriceResponse(value: unknown): value is PriceResponse {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.cardId === 'string' &&
+    typeof value.market === 'string' &&
+    typeof value.currency === 'string' &&
+    typeof value.source === 'string' &&
+    typeof value.fetchedAt === 'string' &&
+    'low' in value &&
+    'high' in value
+  );
+}
+
 @Injectable()
-export class PriceService {
+export class PriceService implements OnModuleDestroy {
   constructor(private readonly prisma: PrismaService) {}
 
+  private readonly logger = new Logger(PriceService.name);
   private readonly priceCache = new Map<string, { data: PriceResponse; expiresAt: number }>();
-  private readonly snapshots: PriceSnapshot[] = [];
+  private readonly cacheTtlSeconds = parseCacheTtlSeconds(getEnvValue('PRICE_CACHE_TTL_SECONDS'));
+  private readonly cacheTtlMs = this.cacheTtlSeconds * 1000;
+  private readonly cacheNamespace = getEnvValue('PRICE_CACHE_NAMESPACE') ?? PRICE_CACHE_NAMESPACE;
+  private readonly redisUrl = getEnvValue('REDIS_URL');
+
+  private redisClient?: PriceRedisClient;
+  private redisConnectPromise?: Promise<PriceRedisClient | null>;
   private tcgplayerToken?: TcgplayerToken;
+
+  async onModuleDestroy(): Promise<void> {
+    if (this.redisClient?.isOpen) {
+      await this.redisClient.quit();
+    }
+  }
+
+  private getCacheKey(cardId: string, market: Market): string {
+    return `${this.cacheNamespace}:${market}:${cardId}`;
+  }
+
+  private async getRedisClient(): Promise<PriceRedisClient | null> {
+    if (!this.redisUrl) return null;
+
+    if (this.redisClient?.isOpen) {
+      return this.redisClient;
+    }
+
+    if (this.redisConnectPromise) {
+      return this.redisConnectPromise;
+    }
+
+    const connectPromise = (async () => {
+      try {
+        const client = createClient({ url: this.redisUrl });
+        client.on('error', (error: unknown) => {
+          this.logger.warn(`redis error: ${error instanceof Error ? error.message : 'unknown'}`);
+        });
+        await client.connect();
+        this.redisClient = client;
+        this.logger.log('redis cache enabled');
+        return client;
+      } catch (error) {
+        this.logger.warn('redis unavailable; falling back to in-memory cache');
+        return null;
+      } finally {
+        this.redisConnectPromise = undefined;
+      }
+    })();
+    this.redisConnectPromise = connectPromise;
+
+    return connectPromise;
+  }
+
+  private async readCache(cacheKey: string): Promise<PriceResponse | null> {
+    const redis = await this.getRedisClient();
+    if (redis) {
+      try {
+        const raw = await redis.get(cacheKey);
+        if (raw) {
+          const parsed = JSON.parse(raw) as unknown;
+          if (isPriceResponse(parsed)) {
+            this.logger.debug(`cache hit(redis): ${cacheKey}`);
+            return parsed;
+          }
+        }
+      } catch (error) {
+        this.logger.warn(`redis read failed for ${cacheKey}`);
+      }
+    }
+
+    const cached = this.priceCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      this.logger.debug(`cache hit(memory): ${cacheKey}`);
+      return cached.data;
+    }
+    if (cached) {
+      this.priceCache.delete(cacheKey);
+    }
+
+    this.logger.debug(`cache miss: ${cacheKey}`);
+    return null;
+  }
+
+  private async writeCache(cacheKey: string, data: PriceResponse): Promise<void> {
+    const redis = await this.getRedisClient();
+    if (redis) {
+      try {
+        await redis.set(cacheKey, JSON.stringify(data), {
+          EX: this.cacheTtlSeconds,
+        });
+        this.logger.debug(`cache set(redis): ${cacheKey}`);
+        return;
+      } catch (error) {
+        this.logger.warn(`redis write failed for ${cacheKey}`);
+      }
+    }
+
+    this.priceCache.set(cacheKey, { data, expiresAt: Date.now() + this.cacheTtlMs });
+    this.logger.debug(`cache set(memory): ${cacheKey}`);
+  }
+
+  async invalidateCardCache(cardId: string, market?: Market): Promise<void> {
+    const markets: Market[] = market ? [market] : ['US', 'JP', 'KR'];
+    const keys = markets.map((entry) => this.getCacheKey(cardId, entry));
+    for (const key of keys) {
+      this.priceCache.delete(key);
+    }
+
+    const redis = await this.getRedisClient();
+    if (redis) {
+      await redis.del(keys);
+    }
+  }
 
   private async fetchJson(url: string, init: RequestInit, message: string): Promise<unknown> {
     let response: Response;
@@ -409,17 +542,14 @@ export class PriceService {
       throw new BadRequestException('cardId is required');
     }
 
-    const cacheKey = `${cardId}:${market}`;
-    const cached = this.priceCache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
-      return cached.data;
-    }
+    const cacheKey = this.getCacheKey(cardId, market);
+    const cached = await this.readCache(cacheKey);
+    if (cached) return cached;
 
     const card = await this.prisma.cardIdentity.findUnique({ where: { id: cardId } });
     if (!card) {
       const stub = this.getStubPrice(cardId, market);
-      this.priceCache.set(cacheKey, { data: stub, expiresAt: Date.now() + PRICE_CACHE_TTL_MS });
-      this.snapshots.push({ ...stub, cachedAt: new Date().toISOString() });
+      await this.writeCache(cacheKey, stub);
       return stub;
     }
 
@@ -447,8 +577,7 @@ export class PriceService {
     };
 
     await this.storeSnapshot(map, response);
-    this.priceCache.set(cacheKey, { data: response, expiresAt: Date.now() + PRICE_CACHE_TTL_MS });
-    this.snapshots.push({ ...response, cachedAt: new Date().toISOString() });
+    await this.writeCache(cacheKey, response);
     return response;
   }
 }
