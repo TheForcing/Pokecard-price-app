@@ -24,6 +24,12 @@ type Sample = {
   ocrConfidence: number | null;
 };
 
+type FixtureCase = {
+  name: string;
+  source: string;
+  transform: (image: sharp.Sharp) => sharp.Sharp;
+};
+
 function createCardServiceMock() {
   return {
     searchCards: async () => [],
@@ -42,14 +48,15 @@ function percentile(values: number[], p: number): number {
   return sorted[index];
 }
 
-async function loadFixtureBase64(fileName: string): Promise<string> {
-  const fixturePath = path.resolve(process.cwd(), '..', '..', 'tests', 'fixtures', fileName);
+async function loadFixtureCaseBase64(fixture: FixtureCase): Promise<string> {
+  const fixturePath = path.resolve(process.cwd(), '..', '..', 'tests', 'fixtures', fixture.source);
   const originalBuffer = await fs.readFile(fixturePath);
-  const resized = await sharp(originalBuffer)
+  const transformed = await fixture
+    .transform(sharp(originalBuffer))
     .resize({ width: 280 })
     .jpeg({ quality: 55 })
     .toBuffer();
-  return `data:image/jpeg;base64,${resized.toString('base64')}`;
+  return `data:image/jpeg;base64,${transformed.toString('base64')}`;
 }
 
 describe.runIf(shouldRun)('recognize benchmark', () => {
@@ -95,12 +102,37 @@ describe.runIf(shouldRun)('recognize benchmark', () => {
   }, 60000);
 
   it('measures /recognize latency and pipeline timing', async () => {
-    const fixtureNames = ['046.png', '127.png'];
-    const base64ByFixture = await Promise.all(fixtureNames.map((name) => loadFixtureBase64(name)));
+    const fixtures: FixtureCase[] = [
+      { name: '046-base', source: '046.png', transform: (image) => image },
+      { name: '127-base', source: '127.png', transform: (image) => image },
+      {
+        name: '046-dim',
+        source: '046.png',
+        transform: (image) => image.modulate({ brightness: 0.82, saturation: 0.9 }),
+      },
+      {
+        name: '127-soft-blur',
+        source: '127.png',
+        transform: (image) => image.blur(0.6),
+      },
+      {
+        name: '046-tilt',
+        source: '046.png',
+        transform: (image) => image.rotate(1.5, { background: '#ffffff' }),
+      },
+      {
+        name: '127-compressed',
+        source: '127.png',
+        transform: (image) => image.jpeg({ quality: 40 }),
+      },
+    ];
+    const base64ByFixture = await Promise.all(
+      fixtures.map((fixture) => loadFixtureCaseBase64(fixture)),
+    );
     const samples: Sample[] = [];
 
     for (let round = 0; round < WARMUP_ROUNDS + MEASURE_ROUNDS; round += 1) {
-      for (let i = 0; i < fixtureNames.length; i += 1) {
+      for (let i = 0; i < fixtures.length; i += 1) {
         const startedAt = Date.now();
         const res = await request(app.getHttpServer())
           .post('/recognize')
@@ -108,7 +140,7 @@ describe.runIf(shouldRun)('recognize benchmark', () => {
         const wallMs = Date.now() - startedAt;
         if (round >= WARMUP_ROUNDS) {
           samples.push({
-            image: fixtureNames[i],
+            image: fixtures[i].name,
             status: res.status,
             wallMs,
             pipelineMs:

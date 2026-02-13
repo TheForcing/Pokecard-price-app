@@ -1,6 +1,6 @@
 # 프로젝트 진행 현황 및 향후 방향
 
-작성일: 2026-02-11
+작성일: 2026-02-13
 
 ## 1) 현재 진행상황
 
@@ -29,9 +29,13 @@
 
 ### 현재 검증 결과
 
-- `pnpm -r test`: 통과 (web/api/shared 각 1개 테스트 통과)
 - `pnpm -r typecheck`: 통과
+- `pnpm -r test`: 통과 (shared 1 passed / web 7 passed / api 19 passed, 4 skipped)
 - `pnpm -r build`: 통과
+- OCR opt-in 검증:
+  - `RUN_OCR_PIPELINE_SMOKE=true pnpm -C apps/api test -- tests/recognize-pipeline.smoke.test.ts`: 통과
+  - `RUN_OCR_BENCHMARK=true pnpm -C apps/api test -- tests/recognize-benchmark.test.ts`: 통과
+  - 확장 벤치마크(24 samples) 기준 평균 지연: wall 1308ms / pipeline 1301ms
 
 ## 2) 개선되어야 할 점
 
@@ -40,6 +44,7 @@
 1. 테스트 깊이 부족
    - 현재 테스트는 기본 smoke 수준으로, 인식/가격/매핑 핵심 로직의 회귀를 막기 어려움.
    - API 통합 테스트(컨트롤러 + 서비스 + Prisma mock/테스트 DB)가 필요함.
+   - OCR 벤치마크 기준 confidence가 낮은 샘플(0.18~0.30) 구간이 있어, 정확도 개선 전담 작업이 필요함.
 
 2. Web 화면 단일 파일 과대화
    - `apps/web/app/page.tsx`가 1000+ 라인으로 상태/뷰/이미지 처리/네트워크 로직이 과도하게 결합됨.

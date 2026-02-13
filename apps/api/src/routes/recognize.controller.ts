@@ -30,6 +30,7 @@ import {
   bestLineScore,
   buildCandidatesFromLines,
   buildQueryVariants,
+  extractCandidateLinesFromOcr,
   extractCandidateLines,
   hasHangul,
   normalizeText,
@@ -67,6 +68,44 @@ type OcrPreprocessProfile = 'aggressive' | 'fast';
 type OcrNameBandMode = 'always' | 'when-low-confidence' | 'off';
 type OcrEnginePolicy = 'easy-first' | 'tesseract-first' | 'tesseract-only';
 
+const EASY_OCR_ACCEPT_CONFIDENCE = 0.42;
+const EASY_OCR_ACCEPT_LINE_SCORE = 0.58;
+const DEFAULT_OCR_FALLBACK_LOW_CONFIDENCE = 0.38;
+const DEFAULT_OCR_FALLBACK_LOW_LINE_SCORE = 0.4;
+const CANDIDATE_CONFIDENCE_WEIGHT = 0.6;
+const OCR_CONFIDENCE_WEIGHT = 0.4;
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+function scoreOcrQuality(ocr: OcrResult): { lineScore: number; calibratedConfidence: number } {
+  const lineScore = bestLineScore(extractCandidateLinesFromOcr(ocr));
+  const normalizedLineScore = clamp01(lineScore);
+  const calibratedConfidence = clamp01(ocr.confidence * 0.7 + normalizedLineScore * 0.3);
+  return { lineScore, calibratedConfidence };
+}
+
+function computeRecognitionConfidence(
+  bestCandidateConfidence: number | undefined,
+  ocrCalibratedConfidence: number,
+): number {
+  if (typeof bestCandidateConfidence !== 'number' || !Number.isFinite(bestCandidateConfidence)) {
+    return clamp01(ocrCalibratedConfidence);
+  }
+  return clamp01(
+    bestCandidateConfidence * CANDIDATE_CONFIDENCE_WEIGHT +
+      ocrCalibratedConfidence * OCR_CONFIDENCE_WEIGHT,
+  );
+}
+
+function parseConfidenceThreshold(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return clamp01(parsed);
+}
+
 function getPreprocessProfile(): OcrPreprocessProfile {
   const value = process.env.OCR_PREPROCESS_PROFILE;
   if (value === 'fast') return 'fast';
@@ -91,10 +130,26 @@ function getEnginePolicy(): OcrEnginePolicy {
   return 'easy-first';
 }
 
+function getFallbackLowConfidence(): number {
+  return parseConfidenceThreshold(
+    process.env.OCR_FALLBACK_LOW_CONFIDENCE,
+    DEFAULT_OCR_FALLBACK_LOW_CONFIDENCE,
+  );
+}
+
+function getFallbackLowLineScore(): number {
+  return parseConfidenceThreshold(
+    process.env.OCR_FALLBACK_LOW_LINE_SCORE,
+    DEFAULT_OCR_FALLBACK_LOW_LINE_SCORE,
+  );
+}
+
 const OCR_PREPROCESS_PROFILE = getPreprocessProfile();
 const OCR_NAME_BAND_MODE = getNameBandMode();
 const OCR_NAME_BAND_MAX_RECTS = getNameBandMaxRects();
 const OCR_ENGINE_POLICY = getEnginePolicy();
+const OCR_FALLBACK_LOW_CONFIDENCE = getFallbackLowConfidence();
+const OCR_FALLBACK_LOW_LINE_SCORE = getFallbackLowLineScore();
 
 type RecognitionLogEntry = {
   id: string;
@@ -632,8 +687,18 @@ async function runOcr(
   }
 
   const easyResult = await runEasyOcr(sourceBuffer ?? buffer, language, rectangle);
-  if (easyResult) return easyResult;
-  return runTesseract();
+  if (!easyResult) return runTesseract();
+
+  const { lineScore: easyLineScore, calibratedConfidence: easyCalibratedConfidence } =
+    scoreOcrQuality(easyResult);
+  const isEasyResultReliable =
+    easyCalibratedConfidence >= EASY_OCR_ACCEPT_CONFIDENCE ||
+    easyLineScore >= EASY_OCR_ACCEPT_LINE_SCORE;
+
+  if (isEasyResultReliable) return easyResult;
+
+  const tesseractResult = await runTesseract();
+  return selectBestOcr([easyResult, tesseractResult]) ?? tesseractResult;
 }
 
 type PokemonTcgCard = {
@@ -813,9 +878,10 @@ export class RecognizeController {
     const ocrBuffer = await preprocessForOcr(cropResult.buffer);
     const ocrSize = cropResult.size ?? imageSize;
     const ocr = await runOcr(ocrBuffer, language, undefined, cropResult.buffer);
+    const ocrQuality = scoreOcrQuality(ocr);
     const shouldRunNameBand =
       OCR_NAME_BAND_MODE === 'always' ||
-      (OCR_NAME_BAND_MODE === 'when-low-confidence' && ocr.confidence < 0.45);
+      (OCR_NAME_BAND_MODE === 'when-low-confidence' && ocrQuality.calibratedConfidence < 0.45);
     const nameBandRects =
       ocrSize && shouldRunNameBand
         ? buildNameBandRects(ocrSize).slice(0, OCR_NAME_BAND_MAX_RECTS)
@@ -828,11 +894,16 @@ export class RecognizeController {
     const ocrNameBand = selectBestOcr(nameBandOcrs);
     const ocrResults = [ocrNameBand ?? ocr].filter(Boolean) as OcrResult[];
     let candidateLines = extractCandidateLines(ocrResults);
+    const primaryOcr = ocrNameBand ?? ocr;
+    const primaryOcrQuality = scoreOcrQuality(primaryOcr);
     let selectedLanguage = language;
 
     if (language === 'EN' && allowLanguageFallback) {
       const enScore = bestLineScore(candidateLines);
-      const shouldTryKorean = ocr.confidence < 0.35 || candidateLines.length === 0;
+      const shouldTryKorean =
+        primaryOcrQuality.calibratedConfidence < OCR_FALLBACK_LOW_CONFIDENCE ||
+        enScore < OCR_FALLBACK_LOW_LINE_SCORE ||
+        candidateLines.length === 0;
       if (shouldTryKorean) {
         const ocrKo = await runOcr(ocrBuffer, 'KO', undefined, cropResult.buffer);
         const koNameBandRects =
@@ -852,6 +923,32 @@ export class RecognizeController {
         if (koCandidateLines.length > 0 && (koHasHangul || koScore > enScore + 0.05)) {
           candidateLines = koCandidateLines;
           selectedLanguage = 'KO';
+        }
+      }
+
+      const shouldTryJapanese =
+        selectedLanguage === 'EN' &&
+        (primaryOcrQuality.calibratedConfidence < OCR_FALLBACK_LOW_CONFIDENCE ||
+          enScore < OCR_FALLBACK_LOW_LINE_SCORE ||
+          candidateLines.length === 0);
+      if (shouldTryJapanese) {
+        const ocrJa = await runOcr(ocrBuffer, 'JA', undefined, cropResult.buffer);
+        const jaNameBandRects =
+          ocrSize && shouldRunNameBand
+            ? buildNameBandRects(ocrSize).slice(0, OCR_NAME_BAND_MAX_RECTS)
+            : [];
+        const jaNameBandOcrs = jaNameBandRects.length
+          ? await Promise.all(
+              jaNameBandRects.map((rect) => runOcr(ocrBuffer, 'JA', rect, cropResult.buffer)),
+            )
+          : [];
+        const ocrJaNameBand = selectBestOcr(jaNameBandOcrs);
+        const jaResults = [ocrJaNameBand ?? ocrJa].filter(Boolean) as OcrResult[];
+        const jaCandidateLines = extractCandidateLines(jaResults);
+        const jaScore = bestLineScore(jaCandidateLines);
+        if (jaCandidateLines.length > 0 && jaScore > enScore + 0.03) {
+          candidateLines = jaCandidateLines;
+          selectedLanguage = 'JA';
         }
       }
     }
@@ -891,7 +988,11 @@ export class RecognizeController {
     }
 
     if (candidates.length === 0) {
-      candidates = buildCandidatesFromLines(candidateLines, selectedLanguage, ocr.confidence);
+      candidates = buildCandidatesFromLines(
+        candidateLines,
+        selectedLanguage,
+        primaryOcrQuality.calibratedConfidence,
+      );
     }
 
     const postProcessed = await buildPostProcessedCandidates(
@@ -906,6 +1007,11 @@ export class RecognizeController {
     const trimmedCandidates = candidates.slice(0, DEFAULT_TOP_K);
 
     const best = trimmedCandidates[0];
+    const recognitionConfidence = computeRecognitionConfidence(
+      best?.confidence,
+      primaryOcrQuality.calibratedConfidence,
+    );
+    const isLowConfidence = recognitionConfidence < LOW_CONFIDENCE_THRESHOLD;
     const elapsedMs = Date.now() - startedAt;
     const logEntry: RecognitionLogEntry = {
       id: `rec_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -915,7 +1021,7 @@ export class RecognizeController {
         cardId: candidate.cardId,
         confidence: candidate.confidence,
       })),
-      confidence: best?.confidence ?? 0,
+      confidence: recognitionConfidence,
       elapsedMs,
       createdAt: new Date().toISOString(),
     };
@@ -924,7 +1030,7 @@ export class RecognizeController {
     return {
       best,
       candidates: trimmedCandidates,
-      needsUserPick: logEntry.confidence < LOW_CONFIDENCE_THRESHOLD,
+      needsUserPick: isLowConfidence,
       debug: {
         note: 'decode + ocr + candidate search (tcgplayer for EN when available)',
         receivedBytes: body.imageBase64?.length ?? 0,
@@ -933,6 +1039,7 @@ export class RecognizeController {
         hint,
         selectedLanguage,
         ocr,
+        ocrQuality,
         ocrNameBand: ocrNameBand ?? undefined,
         imageSize,
         cropRect: cropResult.rect ?? null,
@@ -945,14 +1052,16 @@ export class RecognizeController {
           imageHash,
         },
         logId: logEntry.id,
-        confidence: logEntry.confidence,
-        isLowConfidence: logEntry.confidence < LOW_CONFIDENCE_THRESHOLD,
+        confidence: recognitionConfidence,
+        isLowConfidence,
         steps: ['decode', 'size-check', 'crop', 'ocr', 'candidate-search'],
         runtimeConfig: {
           preprocessProfile: OCR_PREPROCESS_PROFILE,
           nameBandMode: OCR_NAME_BAND_MODE,
           nameBandMaxRects: OCR_NAME_BAND_MAX_RECTS,
           enginePolicy: OCR_ENGINE_POLICY,
+          fallbackLowConfidence: OCR_FALLBACK_LOW_CONFIDENCE,
+          fallbackLowLineScore: OCR_FALLBACK_LOW_LINE_SCORE,
         },
         elapsedMs,
       },
