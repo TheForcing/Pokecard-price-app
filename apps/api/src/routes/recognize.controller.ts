@@ -63,6 +63,39 @@ const EASYOCR_LANGUAGE_MAP: Record<Language, string> = {
   KO: 'ko',
 };
 
+type OcrPreprocessProfile = 'aggressive' | 'fast';
+type OcrNameBandMode = 'always' | 'when-low-confidence' | 'off';
+type OcrEnginePolicy = 'easy-first' | 'tesseract-first' | 'tesseract-only';
+
+function getPreprocessProfile(): OcrPreprocessProfile {
+  const value = process.env.OCR_PREPROCESS_PROFILE;
+  if (value === 'fast') return 'fast';
+  return 'aggressive';
+}
+
+function getNameBandMode(): OcrNameBandMode {
+  const value = process.env.OCR_NAME_BAND_MODE;
+  if (value === 'off' || value === 'when-low-confidence') return value;
+  return 'always';
+}
+
+function getNameBandMaxRects(): number {
+  const parsed = Number(process.env.OCR_NAME_BAND_MAX_RECTS);
+  if (!Number.isFinite(parsed) || parsed < 1) return 2;
+  return Math.max(1, Math.min(6, Math.floor(parsed)));
+}
+
+function getEnginePolicy(): OcrEnginePolicy {
+  const value = process.env.OCR_ENGINE_POLICY;
+  if (value === 'tesseract-first' || value === 'tesseract-only') return value;
+  return 'easy-first';
+}
+
+const OCR_PREPROCESS_PROFILE = getPreprocessProfile();
+const OCR_NAME_BAND_MODE = getNameBandMode();
+const OCR_NAME_BAND_MAX_RECTS = getNameBandMaxRects();
+const OCR_ENGINE_POLICY = getEnginePolicy();
+
 type RecognitionLogEntry = {
   id: string;
   imageBytes: number;
@@ -140,6 +173,10 @@ function decodeBase64Image(data: string): { buffer: Buffer; mime?: string } {
 
 async function preprocessForOcr(buffer: Buffer): Promise<Buffer> {
   try {
+    if (OCR_PREPROCESS_PROFILE === 'fast') {
+      return await sharp(buffer).grayscale().normalize().toBuffer();
+    }
+
     const stats = await sharp(buffer).grayscale().stats();
     const channel = stats.channels[0];
     const mean = channel?.mean ?? 140;
@@ -559,26 +596,44 @@ async function runOcr(
   rectangle?: OcrRectangle,
   sourceBuffer?: Buffer,
 ): Promise<OcrResult> {
-  const easyResult = await runEasyOcr(sourceBuffer ?? buffer, language, rectangle);
-  if (easyResult) return easyResult;
-
   const lang = OCR_LANGUAGE_MAP[language] ?? OCR_LANGUAGE_MAP.EN;
-  let result: RecognizeResult;
-  try {
-    const options = rectangle
-      ? ({ rectangle } as unknown as Parameters<typeof Tesseract.recognize>[2])
-      : undefined;
-    result = await Tesseract.recognize(buffer, lang, options);
-  } catch (error) {
-    throw new ServiceUnavailableException('ocr request failed');
+  const runTesseract = async (): Promise<OcrResult> => {
+    let result: RecognizeResult;
+    try {
+      const options = rectangle
+        ? ({ rectangle } as unknown as Parameters<typeof Tesseract.recognize>[2])
+        : undefined;
+      result = await Tesseract.recognize(buffer, lang, options);
+    } catch (error) {
+      throw new ServiceUnavailableException('ocr request failed');
+    }
+
+    const rawText = typeof result.data.text === 'string' ? result.data.text : '';
+    const rawLines = (result.data.lines ?? [])
+      .map((line: { text: string }) => (typeof line.text === 'string' ? line.text : ''))
+      .filter((line: string) => line.length > 0);
+    const confidence =
+      typeof result.data.confidence === 'number' ? result.data.confidence / 100 : 0;
+    return buildOcrResult(rawText, rawLines, confidence);
+  };
+
+  if (OCR_ENGINE_POLICY === 'tesseract-only') {
+    return runTesseract();
   }
 
-  const rawText = typeof result.data.text === 'string' ? result.data.text : '';
-  const rawLines = (result.data.lines ?? [])
-    .map((line: { text: string }) => (typeof line.text === 'string' ? line.text : ''))
-    .filter((line: string) => line.length > 0);
-  const confidence = typeof result.data.confidence === 'number' ? result.data.confidence / 100 : 0;
-  return buildOcrResult(rawText, rawLines, confidence);
+  if (OCR_ENGINE_POLICY === 'tesseract-first') {
+    try {
+      return await runTesseract();
+    } catch (error) {
+      const easyFallback = await runEasyOcr(sourceBuffer ?? buffer, language, rectangle);
+      if (easyFallback) return easyFallback;
+      throw error;
+    }
+  }
+
+  const easyResult = await runEasyOcr(sourceBuffer ?? buffer, language, rectangle);
+  if (easyResult) return easyResult;
+  return runTesseract();
 }
 
 type PokemonTcgCard = {
@@ -758,7 +813,13 @@ export class RecognizeController {
     const ocrBuffer = await preprocessForOcr(cropResult.buffer);
     const ocrSize = cropResult.size ?? imageSize;
     const ocr = await runOcr(ocrBuffer, language, undefined, cropResult.buffer);
-    const nameBandRects = ocrSize ? buildNameBandRects(ocrSize) : [];
+    const shouldRunNameBand =
+      OCR_NAME_BAND_MODE === 'always' ||
+      (OCR_NAME_BAND_MODE === 'when-low-confidence' && ocr.confidence < 0.45);
+    const nameBandRects =
+      ocrSize && shouldRunNameBand
+        ? buildNameBandRects(ocrSize).slice(0, OCR_NAME_BAND_MAX_RECTS)
+        : [];
     const nameBandOcrs = nameBandRects.length
       ? await Promise.all(
           nameBandRects.map((rect) => runOcr(ocrBuffer, language, rect, cropResult.buffer)),
@@ -774,7 +835,10 @@ export class RecognizeController {
       const shouldTryKorean = ocr.confidence < 0.35 || candidateLines.length === 0;
       if (shouldTryKorean) {
         const ocrKo = await runOcr(ocrBuffer, 'KO', undefined, cropResult.buffer);
-        const koNameBandRects = ocrSize ? buildNameBandRects(ocrSize) : [];
+        const koNameBandRects =
+          ocrSize && shouldRunNameBand
+            ? buildNameBandRects(ocrSize).slice(0, OCR_NAME_BAND_MAX_RECTS)
+            : [];
         const koNameBandOcrs = koNameBandRects.length
           ? await Promise.all(
               koNameBandRects.map((rect) => runOcr(ocrBuffer, 'KO', rect, cropResult.buffer)),
@@ -884,6 +948,12 @@ export class RecognizeController {
         confidence: logEntry.confidence,
         isLowConfidence: logEntry.confidence < LOW_CONFIDENCE_THRESHOLD,
         steps: ['decode', 'size-check', 'crop', 'ocr', 'candidate-search'],
+        runtimeConfig: {
+          preprocessProfile: OCR_PREPROCESS_PROFILE,
+          nameBandMode: OCR_NAME_BAND_MODE,
+          nameBandMaxRects: OCR_NAME_BAND_MAX_RECTS,
+          enginePolicy: OCR_ENGINE_POLICY,
+        },
         elapsedMs,
       },
     };
