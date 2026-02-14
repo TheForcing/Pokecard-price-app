@@ -7,7 +7,7 @@
     "dev": "node --watch --enable-source-maps dist/main.js",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
-    "lint": "echo 'no lint configured'",
+    "lint": "eslint \"src/**/*.ts\"",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prisma:generate": "prisma generate",

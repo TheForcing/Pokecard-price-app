@@ -166,6 +166,15 @@ describe('API integration', () => {
     });
   });
 
+  it('GET /cards/search returns 500 when card service throws', async () => {
+    cardServiceMock.searchCards.mockRejectedValue(new Error('db unavailable'));
+
+    const res = await request(app.getHttpServer()).get('/cards/search').query({ q: 'Pikachu' });
+
+    expect(res.status).toBe(500);
+    expect(res.body.statusCode).toBe(500);
+  });
+
   it('GET /cards/:cardId/prices rejects invalid market', async () => {
     const res = await request(app.getHttpServer())
       .get('/cards/card_1/prices')
@@ -197,6 +206,17 @@ describe('API integration', () => {
     expect(res.body).toMatchObject(payload);
   });
 
+  it('GET /cards/:cardId/prices returns 500 when price service throws', async () => {
+    priceServiceMock.getPrice.mockRejectedValue(new Error('provider timeout'));
+
+    const res = await request(app.getHttpServer())
+      .get('/cards/card_1/prices')
+      .query({ market: 'US' });
+
+    expect(res.status).toBe(500);
+    expect(res.body.statusCode).toBe(500);
+  });
+
   it('POST /recognize validates required imageBase64', async () => {
     const res = await request(app.getHttpServer())
       .post('/recognize')
@@ -205,6 +225,39 @@ describe('API integration', () => {
     expect(res.status).toBe(400);
     expect(res.body.message).toBe('imageBase64 is required');
     expect(cardServiceMock.searchCards).not.toHaveBeenCalled();
+  });
+
+  it('POST /recognize rejects non-string imageBase64', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/recognize')
+      .send({ imageBase64: 12345, hint: { language: 'EN' } });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('imageBase64 is required');
+  });
+
+  it('POST /recognize rejects invalid base64 payload', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/recognize')
+      .send({ imageBase64: 'data:image/png;base64,', hint: { language: 'EN' } });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('imageBase64 is invalid');
+  });
+
+  it('POST /recognize returns 503 when OCR engine request fails', async () => {
+    const mockedRecognize = vi.mocked(Tesseract.recognize);
+    mockedRecognize.mockRejectedValue(new Error('ocr worker crashed'));
+
+    const imageBase64 =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WnN4AAAAASUVORK5CYII=';
+
+    const res = await request(app.getHttpServer())
+      .post('/recognize')
+      .send({ imageBase64, hint: { language: 'EN', market: 'US' } });
+
+    expect(res.status).toBe(503);
+    expect(res.body.message).toBe('ocr request failed');
   });
 
   it('POST /recognize returns candidates on success with mocked OCR/provider', async () => {

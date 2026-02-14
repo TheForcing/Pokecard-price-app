@@ -17,6 +17,9 @@
     "docker:down": "docker compose -f infra/docker-compose.yml down"
   },
   "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.21.0",
+    "@typescript-eslint/parser": "^8.21.0",
+    "eslint": "^8.57.1",
     "prettier": "^3.2.5",
     "typescript": "^5.4.5"
   }
