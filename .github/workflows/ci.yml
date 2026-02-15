@@ -12,7 +12,6 @@ jobs:
     env:
       DATABASE_URL: postgresql://pokecard:pokecard@localhost:5432/pokecard
       REDIS_URL: redis://localhost:6379
-      RUN_DB_INTEGRATION_TESTS: 'true'
 
     services:
       postgres:
@@ -60,11 +59,25 @@ jobs:
       - name: Prepare API test database
         run: pnpm -C apps/api exec prisma db push
 
-      - name: API tests (required)
+      - name: Validate DB integration test prerequisites
+        run: |
+          test -n "$DATABASE_URL" || (echo "DATABASE_URL is required" && exit 1)
+
+      - name: API tests (non-DB)
+        env:
+          RUN_DB_INTEGRATION_TESTS: 'false'
         run: pnpm -C apps/api test
+
+      - name: API DB integration tests (required)
+        env:
+          RUN_DB_INTEGRATION_TESTS: 'true'
+        run: pnpm -C apps/api test -- tests/db-integration.test.ts
 
       - name: Web and shared tests
         run: pnpm -r --filter @pokecard/web --filter @pokecard/shared test
+
+      - name: Workspace lint
+        run: pnpm -r lint
 
       - name: Workspace typecheck
         run: pnpm -r typecheck

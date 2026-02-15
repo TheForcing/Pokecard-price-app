@@ -167,6 +167,191 @@ describe.runIf(shouldRunDbIntegration)('API DB integration', () => {
     const snapshotsAfterSecond = await prisma.priceSnapshot.findMany();
     expect(snapshotsAfterSecond).toHaveLength(1);
   });
+
+  it('GET /cards/:cardId/prices rejects invalid market and does not persist snapshots', async () => {
+    const seeded = await prisma.cardIdentity.create({
+      data: {
+        name: 'Bulbasaur',
+        nameNormalized: 'bulbasaur',
+        language: 'EN',
+        setCode: 'base1',
+        setName: 'Base',
+        collectorNumber: '44',
+        variant: 'NORMAL',
+      },
+    });
+
+    const res = await request(app.getHttpServer())
+      .get(`/cards/${seeded.id}/prices`)
+      .query({ market: 'EU' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('invalid market');
+
+    const snapshots = await prisma.priceSnapshot.findMany();
+    expect(snapshots).toHaveLength(0);
+  });
+
+  it('GET /cards/:cardId/prices for unknown card returns stub and does not create map/snapshot', async () => {
+    const unknownCardId = 'missing-card-id';
+
+    const res = await request(app.getHttpServer())
+      .get(`/cards/${unknownCardId}/prices`)
+      .query({ market: 'US' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.cardId).toBe(unknownCardId);
+    expect(res.body.market).toBe('US');
+    expect(res.body.source).toBe('US_STUB');
+
+    const maps = await prisma.externalProductMap.findMany();
+    const snapshots = await prisma.priceSnapshot.findMany();
+    expect(maps).toHaveLength(0);
+    expect(snapshots).toHaveLength(0);
+  });
+
+  it('POST /recognize rejects invalid image payload and does not persist identity/map', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/recognize')
+      .send({ imageBase64: 'data:image/png;base64,', hint: { language: 'EN', market: 'US' } });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('imageBase64 is invalid');
+
+    const identities = await prisma.cardIdentity.findMany();
+    const maps = await prisma.externalProductMap.findMany();
+    expect(identities).toHaveLength(0);
+    expect(maps).toHaveLength(0);
+  });
+
+  it('POST /recognize rejects missing imageBase64 and does not persist identity/map', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/recognize')
+      .send({ hint: { language: 'EN' } });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('imageBase64 is required');
+
+    const identities = await prisma.cardIdentity.findMany();
+    const maps = await prisma.externalProductMap.findMany();
+    expect(identities).toHaveLength(0);
+    expect(maps).toHaveLength(0);
+  });
+
+  it('POST /recognize rejects oversized image payload and does not persist identity/map', async () => {
+    const tooLargeImageBase64 = `data:image/png;base64,${Buffer.alloc(8 * 1024 * 1024 + 1).toString('base64')}`;
+
+    const res = await request(app.getHttpServer())
+      .post('/recognize')
+      .send({ imageBase64: tooLargeImageBase64, hint: { language: 'EN', market: 'US' } });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('imageBase64 is too large');
+
+    const identities = await prisma.cardIdentity.findMany();
+    const maps = await prisma.externalProductMap.findMany();
+    expect(identities).toHaveLength(0);
+    expect(maps).toHaveLength(0);
+  });
+
+  it('GET /cards/:cardId/prices returns 503 when external provider auth request fails', async () => {
+    const seeded = await prisma.cardIdentity.create({
+      data: {
+        name: 'Squirtle',
+        nameNormalized: 'squirtle',
+        language: 'EN',
+        setCode: 'base1',
+        setName: 'Base',
+        collectorNumber: '7',
+        variant: 'NORMAL',
+      },
+    });
+
+    const prevClientId = process.env.PRICE_PROVIDER_US_CLIENT_ID;
+    const prevClientSecret = process.env.PRICE_PROVIDER_US_CLIENT_SECRET;
+    process.env.PRICE_PROVIDER_US_CLIENT_ID = 'ci-test-client-id';
+    process.env.PRICE_PROVIDER_US_CLIENT_SECRET = 'ci-test-client-secret';
+
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error('network down');
+    });
+
+    try {
+      const res = await request(app.getHttpServer())
+        .get(`/cards/${seeded.id}/prices`)
+        .query({ market: 'US' });
+
+      expect(res.status).toBe(503);
+      expect(res.body.message).toBe('tcgplayer auth failed');
+
+      const maps = await prisma.externalProductMap.findMany();
+      const snapshots = await prisma.priceSnapshot.findMany();
+      expect(maps).toHaveLength(0);
+      expect(snapshots).toHaveLength(0);
+    } finally {
+      process.env.PRICE_PROVIDER_US_CLIENT_ID = prevClientId;
+      process.env.PRICE_PROVIDER_US_CLIENT_SECRET = prevClientSecret;
+    }
+  });
+
+  it('GET /cards/:cardId/prices returns 502 when external provider payload is invalid', async () => {
+    const seeded = await prisma.cardIdentity.create({
+      data: {
+        name: 'Charmander',
+        nameNormalized: 'charmander',
+        language: 'EN',
+        setCode: 'base1',
+        setName: 'Base',
+        collectorNumber: '4',
+        variant: 'NORMAL',
+      },
+    });
+
+    const prevClientId = process.env.PRICE_PROVIDER_US_CLIENT_ID;
+    const prevClientSecret = process.env.PRICE_PROVIDER_US_CLIENT_SECRET;
+    process.env.PRICE_PROVIDER_US_CLIENT_ID = 'ci-test-client-id';
+    process.env.PRICE_PROVIDER_US_CLIENT_SECRET = 'ci-test-client-secret';
+
+    globalThis.fetch = vi.fn(async (input: string | URL | Request) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+      if (url.includes('/token')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ access_token: 'token-1', expires_in: 3600 }),
+        } as Response;
+      }
+
+      if (url.includes('/catalog/products')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ results: { unexpected: true } }),
+        } as Response;
+      }
+
+      throw new Error(`unexpected fetch in test: ${url}`);
+    });
+
+    try {
+      const res = await request(app.getHttpServer())
+        .get(`/cards/${seeded.id}/prices`)
+        .query({ market: 'US' });
+
+      expect(res.status).toBe(502);
+      expect(res.body.message).toBe('tcgplayer search returned invalid data');
+
+      const maps = await prisma.externalProductMap.findMany();
+      const snapshots = await prisma.priceSnapshot.findMany();
+      expect(maps).toHaveLength(0);
+      expect(snapshots).toHaveLength(0);
+    } finally {
+      process.env.PRICE_PROVIDER_US_CLIENT_ID = prevClientId;
+      process.env.PRICE_PROVIDER_US_CLIENT_SECRET = prevClientSecret;
+    }
+  });
 });
 
 describe.skipIf(shouldRunDbIntegration)('API DB integration', () => {
