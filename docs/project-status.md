@@ -1,6 +1,15 @@
 # 프로젝트 진행 현황 및 향후 방향
 
-작성일: 2026-02-14
+작성일: 2026-02-15
+
+## 최근 업데이트 (2026-02-15)
+
+- CI 파이프라인에서 API 테스트를 `non-DB`와 `DB integration`으로 분리하고,
+  DB 통합 테스트 사전조건(`DATABASE_URL`) 검증 단계를 추가함.
+- CI 필수 게이트에 `pnpm -r lint`를 포함해 `lint + typecheck + test`를 모두 강제함.
+- `apps/api/tests/db-integration.test.ts`에 실패 경로를 보강함:
+  - `/recognize` 유효성 실패(필수 필드 누락, 과대 이미지)
+  - `/cards/:id/prices` 외부 공급자 인증 실패(503), 잘못된 payload(502)
 
 ## 1) 현재 진행상황
 
