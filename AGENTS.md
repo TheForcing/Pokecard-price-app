@@ -53,11 +53,16 @@ changes scoped to the relevant package.
 
 ### Tests
 
-- Workspace tests: `pnpm test`
+- Workspace fast tests: `pnpm test` or `pnpm test:fast`
+- Workspace DB integration tests: `pnpm test:integration`
 - Web tests: `pnpm -C apps/web test`
-- API tests: `pnpm -C apps/api test`
+- API fast tests (default): `pnpm -C apps/api test` or `pnpm -C apps/api test:fast`
+- API DB integration tests: `pnpm -C apps/api test:integration`
 - Shared tests: `pnpm -C packages/shared test`
 - Single test file: `pnpm -C packages/shared test -- tests/basic.test.ts`
+- DB integration tests require `DATABASE_URL` and a reachable Postgres instance; `test:integration` sets `RUN_DB_INTEGRATION_TESTS=true` automatically.
+- Redis is optional for DB integration tests. If `REDIS_URL` is not set, API falls back to in-memory cache.
+- OCR smoke/benchmark tests are opt-in via `RUN_OCR_PIPELINE_SMOKE=true` and `RUN_OCR_BENCHMARK=true`.
 
 ## Runtime URLs and env
 

@@ -55,6 +55,7 @@ describe('API integration', () => {
       .compile();
 
     app = moduleRef.createNestApplication();
+    app.useLogger(false);
     await app.init();
 
     const pricesController = app.get(PricesController);
