@@ -1,0 +1,48 @@
+name: Staging Rehearsal
+
+on:
+  workflow_dispatch:
+
+jobs:
+  db-migration-and-smoke:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+      REDIS_URL: ${{ secrets.STAGING_REDIS_URL }}
+      RUN_DB_INTEGRATION_TESTS: 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Validate required secrets
+        run: |
+          test -n "$DATABASE_URL" || (echo "STAGING_DATABASE_URL is required" && exit 1)
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm -C apps/api prisma:generate
+
+      - name: Apply DB schema
+        run: |
+          if [ -d apps/api/prisma/migrations ] && [ "$(ls -A apps/api/prisma/migrations)" ]; then
+            pnpm -C apps/api exec prisma migrate deploy
+          else
+            pnpm -C apps/api exec prisma db push
+          fi
+
+      - name: API DB integration tests
+        run: pnpm -C apps/api test -- tests/db-integration.test.ts

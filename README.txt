@@ -42,6 +42,15 @@ Environment
   - REDIS_URL (optional; when set and reachable, Redis is used as primary cache)
   - PRICE_CACHE_NAMESPACE (default: price:v1)
   - PRICE_CACHE_TTL_SECONDS (default: 7200)
+- API runtime guardrails
+  - API_BODY_LIMIT_MB (default: 10)
+  - API_ALLOWED_ORIGINS (comma-separated; default: http://localhost:3000)
+  - API_RATE_LIMIT_WINDOW_MS (default: 60000)
+  - API_RATE_LIMIT_MAX_REQUESTS (default: 120)
+  - PRICE_PROVIDER_TIMEOUT_MS (default: 8000)
+  - PRICE_PROVIDER_RETRY_COUNT (default: 2)
+  - PRICE_PROVIDER_CIRCUIT_FAILURE_THRESHOLD (default: 5)
+  - PRICE_PROVIDER_CIRCUIT_OPEN_MS (default: 30000)
 
 Testing
 - Workspace: pnpm test
@@ -54,3 +63,7 @@ Testing
 Operational notes
 - See docs/cache-policy.md for cache key, TTL, invalidation, and observability policy.
 - Redis-backed cache is recommended for multi-instance deployments to avoid per-instance cache divergence.
+- See docs/runbooks/github-required-checks.md for branch protection required checks.
+- See docs/runbooks/staging-migration-rehearsal.md for staging migration/rollback rehearsal.
+- See docs/runbooks/backup-restore.md for backup/restore RPO/RTO operations.
+- See docs/observability-baseline.md for dashboard/alert minimum requirements.

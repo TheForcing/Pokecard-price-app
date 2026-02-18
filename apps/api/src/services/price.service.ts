@@ -20,6 +20,17 @@ import { PrismaService } from './prisma.service.js';
 
 const DEFAULT_PRICE_CACHE_TTL_SECONDS = 2 * 60 * 60;
 const PRICE_CACHE_NAMESPACE = 'price:v1';
+const DEFAULT_PROVIDER_TIMEOUT_MS = 8000;
+const DEFAULT_PROVIDER_RETRIES = 2;
+const DEFAULT_CIRCUIT_FAILURE_THRESHOLD = 5;
+const DEFAULT_CIRCUIT_OPEN_MS = 30_000;
+
+type ProviderName = 'TCGPLAYER' | 'RAKUTEN' | 'NAVER';
+
+type CircuitState = {
+  failures: number;
+  openedUntil: number;
+};
 
 function getEnvValue(name: string): string | undefined {
   const value = process.env[name];
@@ -32,6 +43,13 @@ function parseCacheTtlSeconds(value: string | undefined): number {
   if (!value) return DEFAULT_PRICE_CACHE_TTL_SECONDS;
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_PRICE_CACHE_TTL_SECONDS;
+  return Math.floor(parsed);
+}
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return Math.floor(parsed);
 }
 
@@ -78,10 +96,27 @@ export class PriceService implements OnModuleDestroy {
   private readonly cacheTtlMs = this.cacheTtlSeconds * 1000;
   private readonly cacheNamespace = getEnvValue('PRICE_CACHE_NAMESPACE') ?? PRICE_CACHE_NAMESPACE;
   private readonly redisUrl = getEnvValue('REDIS_URL');
+  private readonly providerTimeoutMs = parsePositiveInt(
+    getEnvValue('PRICE_PROVIDER_TIMEOUT_MS'),
+    DEFAULT_PROVIDER_TIMEOUT_MS,
+  );
+  private readonly providerRetries = parsePositiveInt(
+    getEnvValue('PRICE_PROVIDER_RETRY_COUNT'),
+    DEFAULT_PROVIDER_RETRIES,
+  );
+  private readonly circuitFailureThreshold = parsePositiveInt(
+    getEnvValue('PRICE_PROVIDER_CIRCUIT_FAILURE_THRESHOLD'),
+    DEFAULT_CIRCUIT_FAILURE_THRESHOLD,
+  );
+  private readonly circuitOpenMs = parsePositiveInt(
+    getEnvValue('PRICE_PROVIDER_CIRCUIT_OPEN_MS'),
+    DEFAULT_CIRCUIT_OPEN_MS,
+  );
 
   private redisClient?: PriceRedisClient;
   private redisConnectPromise?: Promise<PriceRedisClient | null>;
   private tcgplayerToken?: TcgplayerToken;
+  private readonly circuitState = new Map<ProviderName, CircuitState>();
 
   async onModuleDestroy(): Promise<void> {
     if (this.redisClient?.isOpen) {
@@ -187,19 +222,79 @@ export class PriceService implements OnModuleDestroy {
     }
   }
 
-  private async fetchJson(url: string, init: RequestInit, message: string): Promise<unknown> {
-    let response: Response;
-    try {
-      response = await fetch(url, init);
-    } catch (error) {
-      throw new ServiceUnavailableException(message);
+  private getOrCreateCircuitState(provider: ProviderName): CircuitState {
+    const state = this.circuitState.get(provider);
+    if (state) return state;
+    const nextState: CircuitState = { failures: 0, openedUntil: 0 };
+    this.circuitState.set(provider, nextState);
+    return nextState;
+  }
+
+  private isCircuitOpen(provider: ProviderName): boolean {
+    const state = this.getOrCreateCircuitState(provider);
+    return state.openedUntil > Date.now();
+  }
+
+  private recordProviderSuccess(provider: ProviderName): void {
+    const state = this.getOrCreateCircuitState(provider);
+    if (state.failures === 0 && state.openedUntil === 0) return;
+    state.failures = 0;
+    state.openedUntil = 0;
+  }
+
+  private recordProviderFailure(provider: ProviderName): void {
+    const state = this.getOrCreateCircuitState(provider);
+    state.failures += 1;
+    if (state.failures < this.circuitFailureThreshold) return;
+    state.failures = 0;
+    state.openedUntil = Date.now() + this.circuitOpenMs;
+    this.logger.warn(`provider circuit opened: ${provider}`);
+  }
+
+  private async fetchJson(
+    provider: ProviderName,
+    url: string,
+    init: RequestInit,
+    message: string,
+  ): Promise<unknown> {
+    if (this.isCircuitOpen(provider)) {
+      throw new ServiceUnavailableException(`${provider.toLowerCase()} circuit is open`);
     }
 
-    if (!response.ok) {
-      throw new BadGatewayException(`${message}: ${response.status}`);
+    const maxAttempts = Math.max(1, this.providerRetries + 1);
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), this.providerTimeoutMs);
+
+      let response: Response;
+      try {
+        response = await fetch(url, { ...init, signal: controller.signal });
+      } catch (error) {
+        if (attempt < maxAttempts) {
+          continue;
+        }
+        this.recordProviderFailure(provider);
+        throw new ServiceUnavailableException(message);
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      if (!response.ok) {
+        const retryable = response.status === 429 || response.status >= 500;
+        if (retryable && attempt < maxAttempts) {
+          continue;
+        }
+        this.recordProviderFailure(provider);
+        throw new BadGatewayException(`${message}: ${response.status}`);
+      }
+
+      this.recordProviderSuccess(provider);
+      return (await response.json()) as unknown;
     }
 
-    return (await response.json()) as unknown;
+    this.recordProviderFailure(provider);
+    throw new ServiceUnavailableException(message);
   }
 
   private getStubPrice(cardId: string, market: Market): PriceResponse {
@@ -234,6 +329,7 @@ export class PriceService implements OnModuleDestroy {
     });
 
     const payload = await this.fetchJson(
+      'TCGPLAYER',
       'https://api.tcgplayer.com/token',
       {
         method: 'POST',
@@ -272,6 +368,7 @@ export class PriceService implements OnModuleDestroy {
     searchUrl.searchParams.set('getExtendedFields', 'false');
 
     const searchPayload = await this.fetchJson(
+      'TCGPLAYER',
       searchUrl.toString(),
       { headers: { Accept: 'application/json', Authorization: `bearer ${token}` } },
       'tcgplayer search failed',
@@ -300,6 +397,7 @@ export class PriceService implements OnModuleDestroy {
 
     const pricingUrl = `https://api.tcgplayer.com/pricing/product/${productId}`;
     const pricingPayload = await this.fetchJson(
+      'TCGPLAYER',
       pricingUrl,
       { headers: { Accept: 'application/json', Authorization: `bearer ${token}` } },
       'tcgplayer pricing failed',
@@ -365,6 +463,7 @@ export class PriceService implements OnModuleDestroy {
     url.searchParams.set('format', 'json');
 
     const payload = await this.fetchJson(
+      'RAKUTEN',
       url.toString(),
       { headers: { Accept: 'application/json' } },
       'rakuten search failed',
@@ -408,6 +507,7 @@ export class PriceService implements OnModuleDestroy {
     url.searchParams.set('display', '20');
 
     const payload = await this.fetchJson(
+      'NAVER',
       url.toString(),
       {
         headers: {

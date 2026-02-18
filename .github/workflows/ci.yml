@@ -7,7 +7,55 @@ on:
       - main
 
 jobs:
-  test-and-typecheck:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Workspace lint
+        run: pnpm -r lint
+
+  typecheck:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Workspace typecheck
+        run: pnpm -r typecheck
+
+  test:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgresql://pokecard:pokecard@localhost:5432/pokecard
@@ -76,8 +124,26 @@ jobs:
       - name: Web and shared tests
         run: pnpm -r --filter @pokecard/web --filter @pokecard/shared test
 
-      - name: Workspace lint
-        run: pnpm -r lint
+  build:
+    runs-on: ubuntu-latest
 
-      - name: Workspace typecheck
-        run: pnpm -r typecheck
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Workspace build
+        run: pnpm -r build
