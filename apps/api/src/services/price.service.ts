@@ -26,6 +26,7 @@ const DEFAULT_CIRCUIT_FAILURE_THRESHOLD = 5;
 const DEFAULT_CIRCUIT_OPEN_MS = 30_000;
 
 type ProviderName = 'TCGPLAYER' | 'RAKUTEN' | 'NAVER';
+type ProviderOperation = 'auth' | 'search' | 'pricing';
 
 type CircuitState = {
   failures: number;
@@ -118,6 +119,14 @@ export class PriceService implements OnModuleDestroy {
   private tcgplayerToken?: TcgplayerToken;
   private readonly circuitState = new Map<ProviderName, CircuitState>();
 
+  private logStructured(
+    level: 'debug' | 'log' | 'warn',
+    event: string,
+    payload: Record<string, unknown>,
+  ): void {
+    this.logger[level](JSON.stringify({ event, ...payload }));
+  }
+
   async onModuleDestroy(): Promise<void> {
     if (this.redisClient?.isOpen) {
       await this.redisClient.quit();
@@ -169,25 +178,41 @@ export class PriceService implements OnModuleDestroy {
         if (raw) {
           const parsed = JSON.parse(raw) as unknown;
           if (isPriceResponse(parsed)) {
-            this.logger.debug(`cache hit(redis): ${cacheKey}`);
+            this.logStructured('debug', 'cache_event', {
+              cache: 'redis',
+              action: 'hit',
+              key: cacheKey,
+            });
             return parsed;
           }
         }
       } catch (error) {
-        this.logger.warn(`redis read failed for ${cacheKey}`);
+        this.logStructured('warn', 'cache_event', {
+          cache: 'redis',
+          action: 'read_error',
+          key: cacheKey,
+        });
       }
     }
 
     const cached = this.priceCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
-      this.logger.debug(`cache hit(memory): ${cacheKey}`);
+      this.logStructured('debug', 'cache_event', {
+        cache: 'memory',
+        action: 'hit',
+        key: cacheKey,
+      });
       return cached.data;
     }
     if (cached) {
       this.priceCache.delete(cacheKey);
     }
 
-    this.logger.debug(`cache miss: ${cacheKey}`);
+    this.logStructured('debug', 'cache_event', {
+      cache: redis ? 'redis' : 'memory',
+      action: 'miss',
+      key: cacheKey,
+    });
     return null;
   }
 
@@ -198,15 +223,27 @@ export class PriceService implements OnModuleDestroy {
         await redis.set(cacheKey, JSON.stringify(data), {
           EX: this.cacheTtlSeconds,
         });
-        this.logger.debug(`cache set(redis): ${cacheKey}`);
+        this.logStructured('debug', 'cache_event', {
+          cache: 'redis',
+          action: 'set',
+          key: cacheKey,
+        });
         return;
       } catch (error) {
-        this.logger.warn(`redis write failed for ${cacheKey}`);
+        this.logStructured('warn', 'cache_event', {
+          cache: 'redis',
+          action: 'write_error',
+          key: cacheKey,
+        });
       }
     }
 
     this.priceCache.set(cacheKey, { data, expiresAt: Date.now() + this.cacheTtlMs });
-    this.logger.debug(`cache set(memory): ${cacheKey}`);
+    this.logStructured('debug', 'cache_event', {
+      cache: 'memory',
+      action: 'set',
+      key: cacheKey,
+    });
   }
 
   async invalidateCardCache(cardId: string, market?: Market): Promise<void> {
@@ -248,22 +285,33 @@ export class PriceService implements OnModuleDestroy {
     if (state.failures < this.circuitFailureThreshold) return;
     state.failures = 0;
     state.openedUntil = Date.now() + this.circuitOpenMs;
-    this.logger.warn(`provider circuit opened: ${provider}`);
+    this.logStructured('warn', 'provider_circuit', {
+      provider,
+      action: 'open',
+      openMs: this.circuitOpenMs,
+    });
   }
 
   private async fetchJson(
     provider: ProviderName,
+    operation: ProviderOperation,
     url: string,
     init: RequestInit,
     message: string,
   ): Promise<unknown> {
     if (this.isCircuitOpen(provider)) {
+      this.logStructured('warn', 'provider_call', {
+        provider,
+        operation,
+        result: 'blocked_by_circuit',
+      });
       throw new ServiceUnavailableException(`${provider.toLowerCase()} circuit is open`);
     }
 
     const maxAttempts = Math.max(1, this.providerRetries + 1);
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const startedAt = Date.now();
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), this.providerTimeoutMs);
 
@@ -271,25 +319,70 @@ export class PriceService implements OnModuleDestroy {
       try {
         response = await fetch(url, { ...init, signal: controller.signal });
       } catch (error) {
+        const latencyMs = Date.now() - startedAt;
         if (attempt < maxAttempts) {
+          this.logStructured('warn', 'provider_call', {
+            provider,
+            operation,
+            result: 'retrying_after_network_error',
+            attempt,
+            maxAttempts,
+            latencyMs,
+          });
           continue;
         }
         this.recordProviderFailure(provider);
+        this.logStructured('warn', 'provider_call', {
+          provider,
+          operation,
+          result: 'network_error',
+          attempt,
+          maxAttempts,
+          latencyMs,
+        });
         throw new ServiceUnavailableException(message);
       } finally {
         clearTimeout(timeout);
       }
 
       if (!response.ok) {
+        const latencyMs = Date.now() - startedAt;
         const retryable = response.status === 429 || response.status >= 500;
         if (retryable && attempt < maxAttempts) {
+          this.logStructured('warn', 'provider_call', {
+            provider,
+            operation,
+            result: 'retrying_after_http_error',
+            statusCode: response.status,
+            attempt,
+            maxAttempts,
+            latencyMs,
+          });
           continue;
         }
         this.recordProviderFailure(provider);
+        this.logStructured('warn', 'provider_call', {
+          provider,
+          operation,
+          result: 'http_error',
+          statusCode: response.status,
+          attempt,
+          maxAttempts,
+          latencyMs,
+        });
         throw new BadGatewayException(`${message}: ${response.status}`);
       }
 
       this.recordProviderSuccess(provider);
+      this.logStructured('debug', 'provider_call', {
+        provider,
+        operation,
+        result: 'success',
+        statusCode: response.status,
+        attempt,
+        maxAttempts,
+        latencyMs: Date.now() - startedAt,
+      });
       return (await response.json()) as unknown;
     }
 
@@ -330,6 +423,7 @@ export class PriceService implements OnModuleDestroy {
 
     const payload = await this.fetchJson(
       'TCGPLAYER',
+      'auth',
       'https://api.tcgplayer.com/token',
       {
         method: 'POST',
@@ -369,6 +463,7 @@ export class PriceService implements OnModuleDestroy {
 
     const searchPayload = await this.fetchJson(
       'TCGPLAYER',
+      'search',
       searchUrl.toString(),
       { headers: { Accept: 'application/json', Authorization: `bearer ${token}` } },
       'tcgplayer search failed',
@@ -398,6 +493,7 @@ export class PriceService implements OnModuleDestroy {
     const pricingUrl = `https://api.tcgplayer.com/pricing/product/${productId}`;
     const pricingPayload = await this.fetchJson(
       'TCGPLAYER',
+      'pricing',
       pricingUrl,
       { headers: { Accept: 'application/json', Authorization: `bearer ${token}` } },
       'tcgplayer pricing failed',
@@ -464,6 +560,7 @@ export class PriceService implements OnModuleDestroy {
 
     const payload = await this.fetchJson(
       'RAKUTEN',
+      'search',
       url.toString(),
       { headers: { Accept: 'application/json' } },
       'rakuten search failed',
@@ -508,6 +605,7 @@ export class PriceService implements OnModuleDestroy {
 
     const payload = await this.fetchJson(
       'NAVER',
+      'search',
       url.toString(),
       {
         headers: {

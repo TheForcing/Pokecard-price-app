@@ -24,6 +24,20 @@
 
 권장: 애플리케이션 로그 수집기에서 JSON 파싱을 활성화하고 `requestId`로 추적 연결.
 
+가격 조회 경로(`apps/api/src/services/price.service.ts`)는 아래 구조화 이벤트를 추가로 출력한다.
+
+- `provider_call`
+  - `provider` (`TCGPLAYER` | `RAKUTEN` | `NAVER`)
+  - `operation` (`auth` | `search` | `pricing`)
+  - `result` (`success`, `http_error`, `network_error`, `retrying_after_*`, `blocked_by_circuit`)
+  - `latencyMs`, `attempt`, `maxAttempts`, `statusCode`(있는 경우)
+- `provider_circuit`
+  - `provider`, `action`(현재 `open`), `openMs`
+- `cache_event`
+  - `cache` (`redis` | `memory`)
+  - `action` (`hit`, `miss`, `set`, `read_error`, `write_error`)
+  - `key`
+
 ## 대시보드 최소 패널
 
 1. Request Volume + 2xx/4xx/5xx 비율 (1m/5m)
