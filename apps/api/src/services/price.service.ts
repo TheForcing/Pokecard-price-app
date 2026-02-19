@@ -1,6 +1,7 @@
 import {
   BadGatewayException,
   BadRequestException,
+  Inject,
   Injectable,
   Logger,
   OnModuleDestroy,
@@ -27,6 +28,22 @@ const DEFAULT_CIRCUIT_OPEN_MS = 30_000;
 
 type ProviderName = 'TCGPLAYER' | 'RAKUTEN' | 'NAVER';
 type ProviderOperation = 'auth' | 'search' | 'pricing';
+type ProviderResult =
+  | 'success'
+  | 'http_error'
+  | 'network_error'
+  | 'retrying_after_network_error'
+  | 'retrying_after_http_error'
+  | 'blocked_by_circuit';
+type CacheKind = 'redis' | 'memory';
+type CacheAction = 'hit' | 'miss' | 'set' | 'read_error' | 'write_error';
+
+type CacheMetricEntry = Record<CacheAction, number>;
+type ProviderMetricEntry = {
+  calls: number;
+  latenciesMs: number[];
+  results: Record<ProviderResult, number>;
+};
 
 type CircuitState = {
   failures: number;
@@ -65,6 +82,38 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object';
 }
 
+function createCacheMetricEntry(): CacheMetricEntry {
+  return {
+    hit: 0,
+    miss: 0,
+    set: 0,
+    read_error: 0,
+    write_error: 0,
+  };
+}
+
+function createProviderMetricEntry(): ProviderMetricEntry {
+  return {
+    calls: 0,
+    latenciesMs: [],
+    results: {
+      success: 0,
+      http_error: 0,
+      network_error: 0,
+      retrying_after_network_error: 0,
+      retrying_after_http_error: 0,
+      blocked_by_circuit: 0,
+    },
+  };
+}
+
+function percentile(sortedValues: number[], p: number): number {
+  if (sortedValues.length === 0) return 0;
+  const index = Math.ceil((p / 100) * sortedValues.length) - 1;
+  const safeIndex = Math.max(0, Math.min(sortedValues.length - 1, index));
+  return sortedValues[safeIndex];
+}
+
 function toNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim().length > 0) {
@@ -89,7 +138,11 @@ function isPriceResponse(value: unknown): value is PriceResponse {
 
 @Injectable()
 export class PriceService implements OnModuleDestroy {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly prisma: PrismaService;
+
+  constructor(@Inject(PrismaService) prisma: PrismaService) {
+    this.prisma = prisma;
+  }
 
   private readonly logger = new Logger(PriceService.name);
   private readonly priceCache = new Map<string, { data: PriceResponse; expiresAt: number }>();
@@ -118,13 +171,128 @@ export class PriceService implements OnModuleDestroy {
   private redisConnectPromise?: Promise<PriceRedisClient | null>;
   private tcgplayerToken?: TcgplayerToken;
   private readonly circuitState = new Map<ProviderName, CircuitState>();
+  private readonly providerMetrics: Record<ProviderName, ProviderMetricEntry> = {
+    TCGPLAYER: createProviderMetricEntry(),
+    RAKUTEN: createProviderMetricEntry(),
+    NAVER: createProviderMetricEntry(),
+  };
+  private readonly providerCircuitOpens: Record<ProviderName, number> = {
+    TCGPLAYER: 0,
+    RAKUTEN: 0,
+    NAVER: 0,
+  };
+  private readonly cacheMetrics: Record<CacheKind, CacheMetricEntry> = {
+    redis: createCacheMetricEntry(),
+    memory: createCacheMetricEntry(),
+  };
+
+  private trackCacheMetric(payload: Record<string, unknown>): void {
+    const cache = payload.cache;
+    const action = payload.action;
+    if ((cache !== 'redis' && cache !== 'memory') || typeof action !== 'string') {
+      return;
+    }
+    if (!(action in this.cacheMetrics[cache])) {
+      return;
+    }
+    const typedAction = action as CacheAction;
+    this.cacheMetrics[cache][typedAction] += 1;
+  }
+
+  private trackProviderMetric(payload: Record<string, unknown>): void {
+    const provider = payload.provider;
+    const result = payload.result;
+    if (
+      (provider !== 'TCGPLAYER' && provider !== 'RAKUTEN' && provider !== 'NAVER') ||
+      typeof result !== 'string'
+    ) {
+      return;
+    }
+    if (!(result in this.providerMetrics[provider].results)) {
+      return;
+    }
+    const entry = this.providerMetrics[provider];
+    const typedResult = result as ProviderResult;
+    entry.calls += 1;
+    entry.results[typedResult] += 1;
+
+    const latencyMs = payload.latencyMs;
+    if (typeof latencyMs === 'number' && Number.isFinite(latencyMs) && latencyMs >= 0) {
+      entry.latenciesMs.push(latencyMs);
+      if (entry.latenciesMs.length > 500) {
+        entry.latenciesMs.shift();
+      }
+    }
+  }
+
+  private trackCircuitMetric(payload: Record<string, unknown>): void {
+    const provider = payload.provider;
+    const action = payload.action;
+    if (
+      (provider !== 'TCGPLAYER' && provider !== 'RAKUTEN' && provider !== 'NAVER') ||
+      action !== 'open'
+    ) {
+      return;
+    }
+    this.providerCircuitOpens[provider] += 1;
+  }
+
+  private trackStructuredMetric(event: string, payload: Record<string, unknown>): void {
+    if (event === 'cache_event') {
+      this.trackCacheMetric(payload);
+      return;
+    }
+    if (event === 'provider_call') {
+      this.trackProviderMetric(payload);
+      return;
+    }
+    if (event === 'provider_circuit') {
+      this.trackCircuitMetric(payload);
+    }
+  }
 
   private logStructured(
     level: 'debug' | 'log' | 'warn',
     event: string,
     payload: Record<string, unknown>,
   ): void {
+    this.trackStructuredMetric(event, payload);
     this.logger[level](JSON.stringify({ event, ...payload }));
+  }
+
+  getMetricsSnapshot() {
+    const providerSummary = (Object.keys(this.providerMetrics) as ProviderName[]).map(
+      (provider) => {
+        const entry = this.providerMetrics[provider];
+        const sortedLatencies = [...entry.latenciesMs].sort((a, b) => a - b);
+        const count = sortedLatencies.length;
+        const avg =
+          count > 0
+            ? sortedLatencies.reduce((acc, value) => acc + value, 0) / sortedLatencies.length
+            : 0;
+        return {
+          provider,
+          calls: entry.calls,
+          circuitOpenCount: this.providerCircuitOpens[provider],
+          results: { ...entry.results },
+          latencyMs: {
+            samples: count,
+            avg,
+            p95: percentile(sortedLatencies, 95),
+            p99: percentile(sortedLatencies, 99),
+            max: count > 0 ? sortedLatencies[count - 1] : 0,
+          },
+        };
+      },
+    );
+
+    return {
+      cache: {
+        redis: { ...this.cacheMetrics.redis },
+        memory: { ...this.cacheMetrics.memory },
+      },
+      providers: providerSummary,
+    };
   }
 
   async onModuleDestroy(): Promise<void> {

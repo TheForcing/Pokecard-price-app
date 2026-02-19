@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { CardVariant, Language } from '@pokecard/shared';
 import {
   ExternalProvider,
@@ -50,7 +50,11 @@ function toInt(value: unknown): number | undefined {
 
 @Injectable()
 export class CardService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly prisma: PrismaService;
+
+  constructor(@Inject(PrismaService) prisma: PrismaService) {
+    this.prisma = prisma;
+  }
 
   async searchCards(params: {
     query?: string;

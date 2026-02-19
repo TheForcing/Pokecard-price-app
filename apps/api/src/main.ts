@@ -47,10 +47,34 @@ async function bootstrap() {
 
   const rateLimitWindowMs = parsePositiveInt(process.env.API_RATE_LIMIT_WINDOW_MS, 60_000);
   const rateLimitMax = parsePositiveInt(process.env.API_RATE_LIMIT_MAX_REQUESTS, 120);
+  const rateLimitMaxBuckets = parsePositiveInt(process.env.API_RATE_LIMIT_MAX_BUCKETS, 10_000);
   const ipBucket = new Map<string, { count: number; resetAt: number }>();
+
+  function pruneRateLimitBuckets(now: number): void {
+    for (const [ip, bucket] of ipBucket) {
+      if (bucket.resetAt <= now) {
+        ipBucket.delete(ip);
+      }
+    }
+
+    if (ipBucket.size <= rateLimitMaxBuckets) {
+      return;
+    }
+
+    const overflow = ipBucket.size - rateLimitMaxBuckets;
+    let removed = 0;
+    for (const [ip] of ipBucket) {
+      ipBucket.delete(ip);
+      removed += 1;
+      if (removed >= overflow) {
+        break;
+      }
+    }
+  }
 
   app.use((req: RequestLike, res: ResponseLike, next: NextFunctionLike) => {
     const now = Date.now();
+    pruneRateLimitBuckets(now);
     const forwarded = req.headers['x-forwarded-for'];
     const forwardedIp = Array.isArray(forwarded) ? forwarded[0] : forwarded;
     const clientIp =
@@ -61,10 +85,18 @@ async function bootstrap() {
 
     const bucket = ipBucket.get(clientIp);
     if (!bucket || bucket.resetAt <= now) {
-      ipBucket.set(clientIp, { count: 1, resetAt: now + rateLimitWindowMs });
+      const resetAt = now + rateLimitWindowMs;
+      ipBucket.set(clientIp, { count: 1, resetAt });
+      res.setHeader('X-RateLimit-Limit', String(rateLimitMax));
+      res.setHeader('X-RateLimit-Remaining', String(Math.max(0, rateLimitMax - 1)));
+      res.setHeader('X-RateLimit-Reset', String(Math.ceil(resetAt / 1000)));
       next();
       return;
     }
+
+    res.setHeader('X-RateLimit-Limit', String(rateLimitMax));
+    res.setHeader('X-RateLimit-Remaining', String(Math.max(0, rateLimitMax - bucket.count - 1)));
+    res.setHeader('X-RateLimit-Reset', String(Math.ceil(bucket.resetAt / 1000)));
 
     if (bucket.count >= rateLimitMax) {
       const retryAfterSeconds = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));

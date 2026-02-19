@@ -58,3 +58,14 @@ gh api "repos/$REPO/branches/main/protection" --jq '.required_status_checks.cont
 - 403/404: 관리자 권한 또는 토큰 스코프 확인
 - context 누락: CI workflow job 이름과 보호 규칙 context 이름 일치 여부 확인
 - 체크가 Pending으로 고정: workflow 트리거(`pull_request`)와 브랜치 필터 확인
+
+## gh 미설치 환경용 대체 스크립트
+
+`gh` CLI가 없는 환경에서는 아래 스크립트를 사용한다.
+
+```bash
+export GITHUB_TOKEN=<repo-admin-token>
+bash scripts/apply-required-checks.sh
+```
+
+적용 후에는 GitHub 웹 UI에서 `main` branch protection의 required checks를 재확인한다.

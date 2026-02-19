@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Param, Query } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import type {
   CardIdentity,
   CardSearchResponse,
@@ -29,10 +29,16 @@ function toCardIdentityDto(card: CardIdentityRecord): CardIdentity {
 
 @Controller('/cards')
 export class PricesController {
+  private readonly priceService: PriceService;
+  private readonly cardService: CardService;
+
   constructor(
-    private readonly priceService: PriceService,
-    private readonly cardService: CardService,
-  ) {}
+    @Inject(PriceService) priceService: PriceService,
+    @Inject(CardService) cardService: CardService,
+  ) {
+    this.priceService = priceService;
+    this.cardService = cardService;
+  }
 
   @Get('search')
   async search(

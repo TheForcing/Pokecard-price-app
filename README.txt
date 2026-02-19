@@ -44,9 +44,11 @@ Environment
   - PRICE_CACHE_TTL_SECONDS (default: 7200)
 - API runtime guardrails
   - API_BODY_LIMIT_MB (default: 10)
+  - API_MAX_IMAGE_BYTES (default: 8388608)
   - API_ALLOWED_ORIGINS (comma-separated; default: http://localhost:3000)
   - API_RATE_LIMIT_WINDOW_MS (default: 60000)
   - API_RATE_LIMIT_MAX_REQUESTS (default: 120)
+  - API_RATE_LIMIT_MAX_BUCKETS (default: 10000)
   - PRICE_PROVIDER_TIMEOUT_MS (default: 8000)
   - PRICE_PROVIDER_RETRY_COUNT (default: 2)
   - PRICE_PROVIDER_CIRCUIT_FAILURE_THRESHOLD (default: 5)
@@ -67,3 +69,11 @@ Operational notes
 - See docs/runbooks/staging-migration-rehearsal.md for staging migration/rollback rehearsal.
 - See docs/runbooks/backup-restore.md for backup/restore RPO/RTO operations.
 - See docs/observability-baseline.md for dashboard/alert minimum requirements.
+- Runtime metrics endpoints:
+  - GET /health/metrics (cache hit/miss, provider latency/result counters)
+  - GET /recognize/metrics (OCR confidence histogram, latency summary)
+  - GET /health/metrics/prometheus (Prometheus text format)
+  - GET /recognize/metrics/prometheus (Prometheus text format)
+- Prometheus sample config and alert rules:
+  - `infra/observability/prometheus.yml`
+  - `infra/observability/alerts.yml`

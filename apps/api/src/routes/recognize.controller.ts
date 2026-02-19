@@ -4,6 +4,8 @@ import {
   Body,
   Controller,
   Get,
+  Inject,
+  Header,
   Post,
   Query,
   ServiceUnavailableException,
@@ -39,7 +41,7 @@ import {
   type OcrResult,
 } from './recognize.text.js';
 
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const DEFAULT_MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const DEFAULT_TOP_K = 10;
 const LOW_CONFIDENCE_THRESHOLD = 0.5;
 const OCR_NAME_OFFSET_RATIO = 0.12;
@@ -74,6 +76,14 @@ const DEFAULT_OCR_FALLBACK_LOW_CONFIDENCE = 0.38;
 const DEFAULT_OCR_FALLBACK_LOW_LINE_SCORE = 0.4;
 const CANDIDATE_CONFIDENCE_WEIGHT = 0.6;
 const OCR_CONFIDENCE_WEIGHT = 0.4;
+const SUPPORTED_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.floor(parsed);
+}
 
 function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0;
@@ -150,6 +160,7 @@ const OCR_NAME_BAND_MAX_RECTS = getNameBandMaxRects();
 const OCR_ENGINE_POLICY = getEnginePolicy();
 const OCR_FALLBACK_LOW_CONFIDENCE = getFallbackLowConfidence();
 const OCR_FALLBACK_LOW_LINE_SCORE = getFallbackLowLineScore();
+const MAX_IMAGE_BYTES = parsePositiveInt(process.env.API_MAX_IMAGE_BYTES, DEFAULT_MAX_IMAGE_BYTES);
 
 type RecognitionLogEntry = {
   id: string;
@@ -162,6 +173,67 @@ type RecognitionLogEntry = {
 };
 
 const recognitionLogs: RecognitionLogEntry[] = [];
+
+function percentile(values: number[], p: number): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.ceil((p / 100) * sorted.length) - 1;
+  const safeIndex = Math.max(0, Math.min(sorted.length - 1, index));
+  return sorted[safeIndex];
+}
+
+function buildConfidenceHistogram(logs: RecognitionLogEntry[]) {
+  const buckets = {
+    '0.0-0.2': 0,
+    '0.2-0.4': 0,
+    '0.4-0.6': 0,
+    '0.6-0.8': 0,
+    '0.8-1.0': 0,
+  };
+  for (const entry of logs) {
+    const confidence = Math.max(0, Math.min(1, entry.confidence));
+    if (confidence < 0.2) buckets['0.0-0.2'] += 1;
+    else if (confidence < 0.4) buckets['0.2-0.4'] += 1;
+    else if (confidence < 0.6) buckets['0.4-0.6'] += 1;
+    else if (confidence < 0.8) buckets['0.6-0.8'] += 1;
+    else buckets['0.8-1.0'] += 1;
+  }
+  return buckets;
+}
+
+function formatRecognizePrometheusMetrics(logs: RecognitionLogEntry[]): string {
+  const elapsed = logs.map((entry) => entry.elapsedMs);
+  const count = elapsed.length;
+  const avgElapsedMs = count ? elapsed.reduce((acc, value) => acc + value, 0) / count : 0;
+  const histogram = buildConfidenceHistogram(logs);
+  const lowConfidenceCount = logs.filter(
+    (entry) => entry.confidence < LOW_CONFIDENCE_THRESHOLD,
+  ).length;
+  const lines: string[] = [];
+
+  lines.push('# HELP pokecard_recognize_requests_total Total recognize requests processed');
+  lines.push('# TYPE pokecard_recognize_requests_total counter');
+  lines.push(`pokecard_recognize_requests_total ${count}`);
+
+  lines.push('# HELP pokecard_recognize_low_confidence_total Low-confidence recognize results');
+  lines.push('# TYPE pokecard_recognize_low_confidence_total counter');
+  lines.push(`pokecard_recognize_low_confidence_total ${lowConfidenceCount}`);
+
+  lines.push('# HELP pokecard_ocr_confidence_bucket OCR confidence histogram buckets');
+  lines.push('# TYPE pokecard_ocr_confidence_bucket gauge');
+  for (const [bucket, value] of Object.entries(histogram)) {
+    lines.push(`pokecard_ocr_confidence_bucket{bucket="${bucket}"} ${value}`);
+  }
+
+  lines.push('# HELP pokecard_recognize_latency_ms Recognition latency summary in milliseconds');
+  lines.push('# TYPE pokecard_recognize_latency_ms gauge');
+  lines.push(`pokecard_recognize_latency_ms{stat="avg"} ${avgElapsedMs}`);
+  lines.push(`pokecard_recognize_latency_ms{stat="p95"} ${percentile(elapsed, 95)}`);
+  lines.push(`pokecard_recognize_latency_ms{stat="p99"} ${percentile(elapsed, 99)}`);
+  lines.push(`pokecard_recognize_latency_ms{stat="max"} ${count ? Math.max(...elapsed) : 0}`);
+
+  return `${lines.join('\n')}\n`;
+}
 
 type ImageSize = {
   width: number;
@@ -218,6 +290,9 @@ function decodeBase64Image(data: string): { buffer: Buffer; mime?: string } {
   const dataUrlMatch = data.match(/^data:(.+);base64,(.*)$/);
   const base64 = dataUrlMatch ? dataUrlMatch[2] : data;
   const mime = dataUrlMatch ? dataUrlMatch[1] : undefined;
+  if (mime && !SUPPORTED_IMAGE_MIME_TYPES.has(mime)) {
+    throw new BadRequestException('unsupported image mime type');
+  }
   const buffer = Buffer.from(base64, 'base64');
   if (!buffer.length) throw new BadRequestException('imageBase64 is invalid');
   if (buffer.length > MAX_IMAGE_BYTES) {
@@ -842,7 +917,11 @@ function mergeCandidates(primary: CandidateCard[], secondary: CandidateCard[]) {
 
 @Controller('/recognize')
 export class RecognizeController {
-  constructor(private readonly cardService: CardService) {}
+  private readonly cardService: CardService;
+
+  constructor(@Inject(CardService) cardService: CardService) {
+    this.cardService = cardService;
+  }
 
   @Get('logs')
   getLogs(@Query('limit') limit?: string) {
@@ -852,6 +931,32 @@ export class RecognizeController {
       count: recognitionLogs.length,
       items: recognitionLogs.slice(-safeLimit).reverse(),
     };
+  }
+
+  @Get('metrics')
+  getMetrics() {
+    const elapsed = recognitionLogs.map((entry) => entry.elapsedMs);
+    const count = elapsed.length;
+    const avgElapsedMs = count ? elapsed.reduce((acc, value) => acc + value, 0) / count : 0;
+    return {
+      count,
+      confidenceHistogram: buildConfidenceHistogram(recognitionLogs),
+      elapsedMs: {
+        avg: avgElapsedMs,
+        p95: percentile(elapsed, 95),
+        p99: percentile(elapsed, 99),
+        max: count ? Math.max(...elapsed) : 0,
+      },
+      lowConfidenceCount: recognitionLogs.filter(
+        (entry) => entry.confidence < LOW_CONFIDENCE_THRESHOLD,
+      ).length,
+    };
+  }
+
+  @Get('metrics/prometheus')
+  @Header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
+  getPrometheusMetrics() {
+    return formatRecognizePrometheusMetrics(recognitionLogs);
   }
 
   @Post()

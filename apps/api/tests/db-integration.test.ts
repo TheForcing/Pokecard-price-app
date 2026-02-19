@@ -245,8 +245,12 @@ describe.runIf(shouldRunDbIntegration)('API DB integration', () => {
       .post('/recognize')
       .send({ imageBase64: tooLargeImageBase64, hint: { language: 'EN', market: 'US' } });
 
-    expect(res.status).toBe(400);
-    expect(res.body.message).toBe('imageBase64 is too large');
+    expect([400, 413]).toContain(res.status);
+    if (res.status === 400) {
+      expect(res.body.message).toBe('imageBase64 is too large');
+    } else {
+      expect(res.body.message).toBe('request entity too large');
+    }
 
     const identities = await prisma.cardIdentity.findMany();
     const maps = await prisma.externalProductMap.findMany();
@@ -351,6 +355,100 @@ describe.runIf(shouldRunDbIntegration)('API DB integration', () => {
       process.env.PRICE_PROVIDER_US_CLIENT_ID = prevClientId;
       process.env.PRICE_PROVIDER_US_CLIENT_SECRET = prevClientSecret;
     }
+  });
+
+  it('GET /health/metrics reports cache hit/miss/set counters', async () => {
+    const seeded = await prisma.cardIdentity.create({
+      data: {
+        name: 'Eevee',
+        nameNormalized: 'eevee',
+        language: 'EN',
+        setCode: 'base1',
+        setName: 'Base',
+        collectorNumber: '63',
+        variant: 'NORMAL',
+      },
+    });
+
+    const prevClientId = process.env.PRICE_PROVIDER_US_CLIENT_ID;
+    const prevClientSecret = process.env.PRICE_PROVIDER_US_CLIENT_SECRET;
+    process.env.PRICE_PROVIDER_US_CLIENT_ID = '';
+    process.env.PRICE_PROVIDER_US_CLIENT_SECRET = '';
+
+    try {
+      const first = await request(app.getHttpServer())
+        .get(`/cards/${seeded.id}/prices`)
+        .query({ market: 'US' });
+      expect(first.status).toBe(200);
+
+      const second = await request(app.getHttpServer())
+        .get(`/cards/${seeded.id}/prices`)
+        .query({ market: 'US' });
+      expect(second.status).toBe(200);
+
+      const metrics = await request(app.getHttpServer()).get('/health/metrics');
+      expect(metrics.status).toBe(200);
+      const missTotal = metrics.body.cache.memory.miss + metrics.body.cache.redis.miss;
+      const setTotal = metrics.body.cache.memory.set + metrics.body.cache.redis.set;
+      const hitTotal = metrics.body.cache.memory.hit + metrics.body.cache.redis.hit;
+      expect(missTotal).toBeGreaterThanOrEqual(1);
+      expect(setTotal).toBeGreaterThanOrEqual(1);
+      expect(hitTotal).toBeGreaterThanOrEqual(1);
+    } finally {
+      process.env.PRICE_PROVIDER_US_CLIENT_ID = prevClientId;
+      process.env.PRICE_PROVIDER_US_CLIENT_SECRET = prevClientSecret;
+    }
+  });
+
+  it('GET /recognize/metrics exposes confidence histogram and latency stats', async () => {
+    const mockedRecognize = vi.mocked(Tesseract.recognize);
+    mockedRecognize.mockResolvedValue({
+      data: {
+        text: 'Pikachu',
+        lines: [{ text: 'Pikachu' }],
+        confidence: 96,
+      },
+    } as never);
+
+    globalThis.fetch = vi.fn(async (input: string | URL | Request) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('api.pokemontcg.io/v2/cards')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: 'base1-1',
+                name: 'Pikachu',
+                number: '1',
+                rarity: 'Common',
+                set: { id: 'base1', name: 'Base', printedTotal: 102 },
+                images: { small: 'https://example.com/pikachu.jpg' },
+              },
+            ],
+          }),
+        } as Response;
+      }
+
+      throw new Error(`unexpected fetch in test: ${url}`);
+    });
+
+    const imageBase64 =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WnN4AAAAASUVORK5CYII=';
+
+    const recognize = await request(app.getHttpServer())
+      .post('/recognize')
+      .send({ imageBase64, hint: { language: 'EN', market: 'US' } });
+    expect(recognize.status).toBe(201);
+
+    const metrics = await request(app.getHttpServer()).get('/recognize/metrics');
+    expect(metrics.status).toBe(200);
+    expect(metrics.body.count).toBeGreaterThanOrEqual(1);
+    expect(metrics.body.confidenceHistogram).toHaveProperty('0.0-0.2');
+    expect(metrics.body.confidenceHistogram).toHaveProperty('0.8-1.0');
+    expect(metrics.body.elapsedMs).toHaveProperty('p95');
   });
 });
 

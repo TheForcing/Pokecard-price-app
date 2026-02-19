@@ -1,0 +1,40 @@
+groups:
+  - name: pokecard-provider-alerts
+    rules:
+      - alert: PokecardProviderP95High
+        expr: pokecard_provider_latency_ms{stat="p95"} > 8000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Provider p95 latency is high'
+          description: 'Provider {{ $labels.provider }} p95 latency is above 8s for 10 minutes.'
+
+      - alert: PokecardProviderHttpErrors
+        expr: sum by (provider) (pokecard_provider_calls_total{result="http_error"}) > 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Provider HTTP errors increased'
+          description: 'Provider {{ $labels.provider }} has more than 10 HTTP errors.'
+
+      - alert: PokecardProviderCircuitOpened
+        expr: pokecard_provider_circuit_open_total > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Provider circuit breaker opened'
+          description: 'Circuit opened for provider {{ $labels.provider }}.'
+
+  - name: pokecard-recognize-alerts
+    rules:
+      - alert: PokecardRecognizeLowConfidenceSpike
+        expr: pokecard_recognize_low_confidence_total > 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Low-confidence OCR results are increasing'
+          description: 'Low-confidence recognize results exceed threshold.'

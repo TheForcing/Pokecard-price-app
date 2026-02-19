@@ -6,6 +6,7 @@ import request from 'supertest';
 import Tesseract from 'tesseract.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppModule } from '../src/module.js';
+import { HealthController } from '../src/routes/health.controller.js';
 import { PricesController } from '../src/routes/prices.controller.js';
 import { RecognizeController } from '../src/routes/recognize.controller.js';
 import { CardService } from '../src/services/card.service.js';
@@ -30,6 +31,13 @@ function createCardServiceMock() {
 function createPriceServiceMock() {
   return {
     getPrice: vi.fn(),
+    getMetricsSnapshot: vi.fn(() => ({
+      cache: {
+        redis: { hit: 0, miss: 0, set: 0, read_error: 0, write_error: 0 },
+        memory: { hit: 0, miss: 0, set: 0, read_error: 0, write_error: 0 },
+      },
+      providers: [],
+    })),
   };
 }
 
@@ -67,6 +75,10 @@ describe('API integration', () => {
     const recognizeController = app.get(RecognizeController);
     (recognizeController as unknown as { cardService: typeof cardServiceMock }).cardService =
       cardServiceMock;
+
+    const healthController = app.get(HealthController);
+    (healthController as unknown as { priceService: typeof priceServiceMock }).priceService =
+      priceServiceMock;
   });
 
   afterEach(async () => {
@@ -82,6 +94,14 @@ describe('API integration', () => {
     expect(res.body.ok).toBe(true);
     expect(res.body.service).toBe('api');
     expect(typeof res.body.time).toBe('string');
+  });
+
+  it('GET /health/metrics/prometheus returns prometheus text payload', async () => {
+    const res = await request(app.getHttpServer()).get('/health/metrics/prometheus');
+
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('pokecard_cache_events_total');
+    expect(res.text).toContain('pokecard_provider_calls_total');
   });
 
   it('GET /cards/search returns mapped items', async () => {
@@ -244,6 +264,33 @@ describe('API integration', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.message).toBe('imageBase64 is invalid');
+  });
+
+  it('POST /recognize rejects unsupported mime type', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/recognize')
+      .send({ imageBase64: 'data:text/plain;base64,YWJj', hint: { language: 'EN' } });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('unsupported image mime type');
+  });
+
+  it('GET /recognize/metrics returns confidence histogram shape', async () => {
+    const res = await request(app.getHttpServer()).get('/recognize/metrics');
+
+    expect(res.status).toBe(200);
+    expect(typeof res.body.count).toBe('number');
+    expect(res.body.confidenceHistogram).toHaveProperty('0.0-0.2');
+    expect(res.body.confidenceHistogram).toHaveProperty('0.8-1.0');
+    expect(res.body.elapsedMs).toHaveProperty('p95');
+  });
+
+  it('GET /recognize/metrics/prometheus returns prometheus text payload', async () => {
+    const res = await request(app.getHttpServer()).get('/recognize/metrics/prometheus');
+
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('pokecard_recognize_requests_total');
+    expect(res.text).toContain('pokecard_ocr_confidence_bucket');
   });
 
   it('POST /recognize returns 503 when OCR engine request fails', async () => {
