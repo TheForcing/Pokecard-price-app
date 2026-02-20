@@ -6,6 +6,9 @@ on:
     branches:
       - main
 
+env:
+  OPENCV4NODEJS_DISABLE_AUTOBUILD: '1'
+
 jobs:
   lint:
     runs-on: ubuntu-latest
