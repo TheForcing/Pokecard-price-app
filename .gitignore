@@ -10,6 +10,8 @@ apps/api/node_modules
 apps/web/node_modules
 apps/web/.next
 apps/web/tsconfig.tsbuildinfo
+apps/web/playwright-report
+apps/web/test-results
 packages/shared/node_modules
 packages/shared/dist
 pnpm-lock.yaml

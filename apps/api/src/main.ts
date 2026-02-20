@@ -15,6 +15,7 @@ type RequestLike = {
 type ResponseLike = {
   statusCode: number;
   setHeader(name: string, value: string): void;
+  removeHeader(name: string): void;
   status(code: number): { json(body: { message: string }): void };
   on(event: 'finish', listener: () => void): void;
 };
@@ -39,6 +40,10 @@ function parseOrigins(value: string | undefined): string[] {
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.disable('x-powered-by');
+
+  const apiPort = parsePositiveInt(process.env.API_PORT, 4000);
+  const apiHost = process.env.API_HOST?.trim() || '127.0.0.1';
 
   const bodyLimitMb = parsePositiveInt(process.env.API_BODY_LIMIT_MB, 10);
   const bodyLimit = `${bodyLimitMb}mb`;
@@ -71,6 +76,28 @@ async function bootstrap() {
       }
     }
   }
+
+  app.use((req: RequestLike, res: ResponseLike, next: NextFunctionLike) => {
+    const forwardedProto = req.headers['x-forwarded-proto'];
+    const proto = Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto;
+    const isHttps = typeof proto === 'string' && proto.toLowerCase() === 'https';
+
+    res.removeHeader('x-powered-by');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('X-DNS-Prefetch-Control', 'off');
+    res.setHeader('X-Download-Options', 'noopen');
+    res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    if (isHttps) {
+      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+
+    next();
+  });
 
   app.use((req: RequestLike, res: ResponseLike, next: NextFunctionLike) => {
     const now = Date.now();
@@ -140,9 +167,9 @@ async function bootstrap() {
     origin: parseOrigins(process.env.API_ALLOWED_ORIGINS),
     credentials: true,
   });
-  await app.listen(4000);
+  await app.listen(apiPort, apiHost);
   // eslint-disable-next-line no-console
-  console.log('API listening on http://localhost:4000');
+  console.log(`API listening on http://${apiHost}:${apiPort}`);
 }
 
 bootstrap();
