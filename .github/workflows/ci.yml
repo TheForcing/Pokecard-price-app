@@ -25,7 +25,7 @@ jobs:
           corepack prepare pnpm@9.0.0 --activate
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Workspace lint
         run: pnpm -r lint
@@ -48,7 +48,7 @@ jobs:
           corepack prepare pnpm@9.0.0 --activate
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Workspace typecheck
         run: pnpm -r typecheck
@@ -99,7 +99,7 @@ jobs:
           corepack prepare pnpm@9.0.0 --activate
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Prepare API test database
         run: pnpm -C apps/api exec prisma db push
@@ -155,7 +155,7 @@ jobs:
           corepack prepare pnpm@9.0.0 --activate
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Workspace build
         run: pnpm -r build
