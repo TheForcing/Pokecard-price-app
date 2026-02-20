@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate Prisma client
+        run: pnpm -C apps/api prisma:generate
+
       - name: Workspace lint
         run: pnpm -r lint
 
@@ -52,6 +55,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm -C apps/api prisma:generate
 
       - name: Workspace typecheck
         run: pnpm -r typecheck
@@ -103,6 +109,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm -C apps/api prisma:generate
 
       - name: Prepare API test database
         run: pnpm -C apps/api exec prisma db push
@@ -159,6 +168,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm -C apps/api prisma:generate
 
       - name: Workspace build
         run: pnpm -r build
