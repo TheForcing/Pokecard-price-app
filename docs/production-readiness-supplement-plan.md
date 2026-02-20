@@ -24,12 +24,18 @@
 - [ ] API 통합 테스트 10개+ 추가(실패/경계값 중심)
   - 이번 변경에서 관련 테스트 보강 완료(메트릭/가드레일)
   - 추가 10개 목표는 계속 진행 필요
-- [ ] OCR confidence/공급자 latency 대시보드 구축
-  - 대시보드 연동용 API 지표 엔드포인트 추가 완료
-  - 실제 대시보드/알람 연결은 인프라 작업 필요
+- [~] OCR confidence/공급자 latency 대시보드 구축
+  - 대시보드/알람 인프라 스택(Prometheus/Grafana/Alertmanager) 및 기본 대시보드 프로비저닝 추가 완료
+  - 실제 운영 채널(Slack/Email) 자격증명 연결 + 발화 검증은 환경별 시크릿 설정 후 수행 필요
 - [~] rate limit + 이미지 업로드 제한 강화
   - rate limit 버킷 정리/상한 및 표준 헤더 추가
   - 이미지 MIME 제한 + 최대 바이트 설정(`API_MAX_IMAGE_BYTES`) 추가
+- [x] Web 핵심 E2E 2개 추가
+  - `apps/web/tests/e2e/home-flows.spec.ts`에 핵심 플로우 2개(업로드/인식/가격, OCR 실패/수동검색/가격) 추가
+  - `ci.yml` test job에 Playwright 실행 + 아티팩트 업로드(`playwright-report`, `test-results`) 추가
+- [x] API 보안 헤더 강화
+  - `apps/api/src/main.ts`에 보안 헤더 미들웨어 추가(helmet 동등 정책)
+  - `x-powered-by` 비활성화 + HTTPS 환경 HSTS 헤더 적용
 - [ ] 스테이징 리허설(마이그레이션 + 롤백)
   - 워크플로우/런북 존재, 실제 실행 기록 필요
 - [ ] 배포 게이트(Required checks) 고정
@@ -49,6 +55,7 @@
   - `gh api .../branches/main/protection` 조회 결과에 4개 context 명시
 - 검증
   - `docs/runbooks/github-required-checks.md` 절차로 적용/조회 로그 남기기
+  - 자동 검증 스크립트: `scripts/verify-required-checks.sh`
 
 ### 2) Web 핵심 E2E 2개 추가
 
@@ -72,6 +79,7 @@
   - 의도적 실패 1회로 알람 발화 확인
 - 검증
   - `docs/observability-baseline.md`의 완료 체크박스 4개 전부 체크
+  - synthetic 발화 스크립트: `scripts/observability-fire-test-alert.sh`
 
 ### 4) 스테이징 리허설 1회 수행/기록
 

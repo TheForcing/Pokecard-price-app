@@ -17,6 +17,36 @@
 - API 서버 실행 상태
 - Prometheus
 - Grafana
+- Alertmanager (알람 채널 라우팅)
+
+## 빠른 시작 (로컬)
+
+1. 인프라 서비스 기동
+
+```bash
+pnpm docker:up
+docker compose -f infra/docker-compose.yml up -d prometheus grafana alertmanager
+```
+
+2. API 실행 (`http://localhost:4000`)
+
+```bash
+pnpm -C apps/api dev
+```
+
+3. 대시보드 접속
+
+- Grafana: `http://localhost:3001` (`admin` / `admin`)
+- Prometheus: `http://localhost:9090`
+- Alertmanager: `http://localhost:9093`
+
+4. 스모크 검증
+
+```bash
+bash scripts/observability-smoke.sh
+```
+
+성공 시 `Observability smoke check passed` 출력.
 
 ## 1) Prometheus 스크랩 설정
 
@@ -30,9 +60,13 @@
 
 ## 2) Grafana 데이터소스 연결
 
-1. Grafana -> Data sources -> Prometheus 추가
-2. Prometheus URL 입력
-3. Save & Test 성공 확인
+이 저장소는 자동 프로비저닝을 사용한다.
+
+- 데이터소스: `infra/observability/grafana/provisioning/datasources/datasources.yml`
+- 대시보드 프로바이더: `infra/observability/grafana/provisioning/dashboards/dashboards.yml`
+- 대시보드 JSON: `infra/observability/grafana/dashboards/pokecard-observability.json`
+
+수동 추가가 필요하면 Prometheus URL을 `http://prometheus:9090`으로 설정한다.
 
 ## 3) 대시보드 패널 권장 구성
 
@@ -56,11 +90,24 @@
 ## 4) 알람 적용
 
 - `infra/observability/alerts.yml`를 Prometheus rule_files로 로드
+- `infra/observability/alertmanager.yml`를 Alertmanager가 로드
 - 최소 알람:
   - Provider p95 latency 상승
   - Provider HTTP error 증가
   - Circuit breaker open
   - OCR 저신뢰 결과 급증
+
+알람 채널 연결:
+
+- Slack: `infra/observability/alertmanager.yml`의 `slack-webhook` receiver 사용
+- Email: `email-alert` receiver 사용
+- 운영에서는 route receiver를 `default-log`에서 실제 채널 receiver로 변경
+
+기본 템플릿은 로컬 부팅 안전성을 위해 placeholder 값을 사용한다.
+운영 적용 전 반드시 아래 값을 실제 값으로 교체한다.
+
+- `https://example.invalid/slack-webhook`
+- `auth_password: change-me`
 
 ## 5) 검증 체크리스트
 
@@ -68,3 +115,18 @@
 - [ ] Grafana 패널 데이터 표시 확인
 - [ ] 테스트 요청 후 카운터 증가 확인
 - [ ] 알람 테스트(임계치 초과 시뮬레이션) 1회 성공
+
+## 알람 발화 테스트 예시
+
+1. `infra/observability/alerts.yml`에서 임계치를 일시적으로 낮춤(예: `pokecard_provider_circuit_open_total > 0` 유지).
+2. API에 실패 유도 요청을 반복 전송해 관련 카운터 증가.
+3. Alertmanager UI(`http://localhost:9093`)에서 firing 확인.
+4. Slack/Email 수신 확인 후 임계치를 원복.
+
+또는 synthetic alert로 경로 자체를 즉시 점검한다.
+
+```bash
+bash scripts/observability-fire-test-alert.sh
+```
+
+성공 시 Alertmanager에 `PokecardSyntheticTestAlert`가 표시된다.

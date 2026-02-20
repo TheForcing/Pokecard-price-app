@@ -82,10 +82,16 @@
 
 ## 완료 기준
 
-- [ ] 대시보드 URL 공유
+- [x] 대시보드 URL 공유
 - [ ] 알람 채널(슬랙/이메일) 연결
 - [ ] 알람 테스트(의도적 실패) 1회 이상 성공
 - [ ] 온콜 runbook에 링크 추가
+
+현재 기본 URL:
+
+- Grafana: `http://localhost:3001`
+- Prometheus: `http://localhost:9090`
+- Alertmanager: `http://localhost:9093`
 
 ## 구현 참고
 

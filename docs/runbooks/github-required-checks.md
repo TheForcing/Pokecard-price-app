@@ -64,8 +64,24 @@ gh api "repos/$REPO/branches/main/protection" --jq '.required_status_checks.cont
 `gh` CLI가 없는 환경에서는 아래 스크립트를 사용한다.
 
 ```bash
-export GITHUB_TOKEN=<repo-admin-token>
+export GITHUB_TOKEN=<repo-admin-token> # 또는 GH_TOKEN
 bash scripts/apply-required-checks.sh
 ```
+
+선택: 원격 저장소를 명시하려면 `REPO=owner/repo`를 함께 지정한다.
+
+```bash
+GITHUB_TOKEN=<repo-admin-token> REPO=owner/repo bash scripts/apply-required-checks.sh
+```
+
+## 자동 검증 스크립트
+
+적용 후 아래 스크립트로 필수 context와 강제 옵션을 재검증한다.
+
+```bash
+GITHUB_TOKEN=<repo-admin-token> bash scripts/verify-required-checks.sh
+```
+
+성공 시 `Required checks verified ...` 메시지가 출력된다.
 
 적용 후에는 GitHub 웹 UI에서 `main` branch protection의 required checks를 재확인한다.
