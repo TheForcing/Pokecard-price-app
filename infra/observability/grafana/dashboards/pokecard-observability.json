@@ -1,0 +1,96 @@
+{
+  "id": null,
+  "uid": "pokecard-observability",
+  "title": "Pokecard Observability Baseline",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Cache hit/miss",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (cache, action) (rate(pokecard_cache_events_total{action=~\"hit|miss\"}[5m]))",
+          "legendFormat": "{{cache}} {{action}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Provider p95/p99 latency (ms)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "pokecard_provider_latency_ms{stat=~\"p95|p99\"}",
+          "legendFormat": "{{provider}} {{stat}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Provider failures (5m rate)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (provider, result) (rate(pokecard_provider_calls_total{result=~\"http_error|network_error\"}[5m]))",
+          "legendFormat": "{{provider}} {{result}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "OCR confidence buckets",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "pokecard_ocr_confidence_bucket",
+          "legendFormat": "{{bucket}}"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Circuit breaker open count",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(pokecard_provider_circuit_open_total)",
+          "legendFormat": "opens"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Recognize p95 latency (ms)",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "max(pokecard_recognize_latency_ms{stat=\"p95\"})"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Recognize p99 latency (ms)",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "max(pokecard_recognize_latency_ms{stat=\"p99\"})"
+        }
+      ]
+    }
+  ]
+}

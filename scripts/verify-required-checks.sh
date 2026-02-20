@@ -2,7 +2,6 @@
 set -euo pipefail
 
 TOKEN=${GITHUB_TOKEN:-${GH_TOKEN:-}}
-
 if [[ -z "$TOKEN" ]]; then
   printf 'GITHUB_TOKEN (or GH_TOKEN) is required\n' >&2
   exit 1
@@ -15,7 +14,7 @@ if [[ -z "$REPO" ]]; then
 fi
 
 if [[ -z "$REPO" ]]; then
-  printf 'Unable to resolve repository from origin remote\n' >&2
+  printf 'Unable to resolve repository. Set REPO=owner/repo\n' >&2
   exit 1
 fi
 
@@ -33,37 +32,12 @@ if [[ -z "$BRANCH" ]]; then
   exit 1
 fi
 
-curl -fsS -X PUT \
-  -H "Accept: application/vnd.github+json" \
-  -H "Authorization: Bearer ${TOKEN}" \
-  "https://api.github.com/repos/${REPO}/branches/${BRANCH}/protection" \
-  -d '{
-    "required_status_checks": {
-      "strict": true,
-      "contexts": ["lint", "typecheck", "test", "build"]
-    },
-    "restrictions": null,
-    "enforce_admins": true,
-    "required_pull_request_reviews": {
-      "dismiss_stale_reviews": true,
-      "required_approving_review_count": 1
-    },
-    "required_conversation_resolution": true,
-    "allow_force_pushes": false,
-    "allow_deletions": false,
-    "block_creations": false,
-    "required_linear_history": false
-  }'
-
-printf 'Applied required checks to %s %s branch\n' "$REPO" "$BRANCH"
-
-printf 'Verifying required contexts...\n'
-VERIFY_JSON=$(curl -fsS \
+JSON=$(curl -fsS \
   -H "Accept: application/vnd.github+json" \
   -H "Authorization: Bearer ${TOKEN}" \
   "https://api.github.com/repos/${REPO}/branches/${BRANCH}/protection")
 
-printf '%s' "$VERIFY_JSON" | node -e "
+printf '%s' "$JSON" | node -e "
 let s='';
 process.stdin.on('data', d => s += d).on('end', () => {
   const j = JSON.parse(s);
@@ -79,4 +53,4 @@ process.stdin.on('data', d => s += d).on('end', () => {
 });
 "
 
-printf 'Verification passed for required contexts (lint, typecheck, test, build) on %s\n' "$BRANCH"
+printf 'Required checks verified on %s (%s): lint, typecheck, test, build\n' "$REPO" "$BRANCH"

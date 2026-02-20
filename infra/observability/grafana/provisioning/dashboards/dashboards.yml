@@ -1,0 +1,9 @@
+apiVersion: 1
+
+providers:
+  - name: Pokecard Production Baseline
+    folder: Pokecard
+    type: file
+    editable: false
+    options:
+      path: /var/lib/grafana/dashboards
