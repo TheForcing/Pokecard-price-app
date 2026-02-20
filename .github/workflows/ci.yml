@@ -60,7 +60,7 @@ jobs:
         run: pnpm -C apps/api prisma:generate
 
       - name: Workspace typecheck
-        run: pnpm -r typecheck
+        run: pnpm -C packages/shared build && pnpm -r typecheck
 
   test:
     runs-on: ubuntu-latest
