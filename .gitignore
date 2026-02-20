@@ -14,4 +14,3 @@ apps/web/playwright-report
 apps/web/test-results
 packages/shared/node_modules
 packages/shared/dist
-pnpm-lock.yaml
