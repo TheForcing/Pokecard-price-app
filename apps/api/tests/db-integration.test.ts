@@ -168,6 +168,166 @@ describe.runIf(shouldRunDbIntegration)('API DB integration', () => {
     expect(snapshotsAfterSecond).toHaveLength(1);
   });
 
+  it('GET /cards/search applies language/set/number/variant filters with limit', async () => {
+    await prisma.cardIdentity.createMany({
+      data: [
+        {
+          name: 'Pikachu',
+          nameNormalized: 'pikachu',
+          language: 'EN',
+          setCode: 'base1',
+          setName: 'Base',
+          collectorNumber: '1',
+          variant: 'NORMAL',
+        },
+        {
+          name: 'Pikachu',
+          nameNormalized: 'pikachu',
+          language: 'EN',
+          setCode: 'base1',
+          setName: 'Base',
+          collectorNumber: '1',
+          variant: 'HOLOFOIL',
+        },
+        {
+          name: 'Pikachu',
+          nameNormalized: 'pikachu',
+          language: 'JA',
+          setCode: 'base1',
+          setName: 'Base',
+          collectorNumber: '1',
+          variant: 'NORMAL',
+        },
+      ],
+    });
+
+    const res = await request(app.getHttpServer()).get('/cards/search').query({
+      language: 'EN',
+      setCode: 'base1',
+      number: '1',
+      variant: 'NORMAL',
+      limit: '1',
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0]).toMatchObject({
+      name: 'Pikachu',
+      language: 'EN',
+      setCode: 'base1',
+      collectorNumber: '1',
+      variant: 'NORMAL',
+    });
+  });
+
+  it('GET /cards/search normalizes query and returns name-asc ordered cards', async () => {
+    await prisma.cardIdentity.createMany({
+      data: [
+        {
+          name: 'Pikachu Alpha',
+          nameNormalized: 'pikachu alpha',
+          language: 'EN',
+          setCode: 'sv1',
+          setName: 'Scarlet & Violet',
+          collectorNumber: '63',
+          variant: 'NORMAL',
+        },
+        {
+          name: 'Pikachu Zeta',
+          nameNormalized: 'pikachu zeta',
+          language: 'EN',
+          setCode: 'swsh1',
+          setName: 'Sword & Shield',
+          collectorNumber: '43',
+          variant: 'NORMAL',
+        },
+        {
+          name: 'Charizard',
+          nameNormalized: 'charizard',
+          language: 'EN',
+          setCode: 'base1',
+          setName: 'Base',
+          collectorNumber: '4',
+          variant: 'NORMAL',
+        },
+      ],
+    });
+
+    const res = await request(app.getHttpServer())
+      .get('/cards/search')
+      .query({ q: '  PIKACHU---  ', language: 'EN', limit: '10' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(2);
+    expect(res.body.items[0].name).toBe('Pikachu Alpha');
+    expect(res.body.items[1].name).toBe('Pikachu Zeta');
+  });
+
+  it('GET /cards/search uses default limit when limit query is invalid', async () => {
+    await prisma.cardIdentity.createMany({
+      data: [
+        {
+          name: 'Eevee A',
+          nameNormalized: 'eevee a',
+          language: 'EN',
+          setCode: 'base1',
+          setName: 'Base',
+          collectorNumber: '63',
+          variant: 'NORMAL',
+        },
+        {
+          name: 'Eevee B',
+          nameNormalized: 'eevee b',
+          language: 'EN',
+          setCode: 'base1',
+          setName: 'Base',
+          collectorNumber: '64',
+          variant: 'NORMAL',
+        },
+      ],
+    });
+
+    const res = await request(app.getHttpServer())
+      .get('/cards/search')
+      .query({ q: 'eevee', language: 'EN', limit: 'not-a-number' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(2);
+    expect(res.body.items[0].name).toBe('Eevee A');
+    expect(res.body.items[1].name).toBe('Eevee B');
+  });
+
+  it('GET /cards/search clamps limit boundary values (0 -> 1, 999 -> 50)', async () => {
+    await prisma.cardIdentity.createMany({
+      data: Array.from({ length: 55 }, (_, index) => {
+        const n = index + 1;
+        return {
+          name: `LimitMon ${n.toString().padStart(2, '0')}`,
+          nameNormalized: `limitmon ${n.toString().padStart(2, '0')}`,
+          language: 'EN' as const,
+          setCode: 'sv1',
+          setName: 'Scarlet & Violet',
+          collectorNumber: `${n}`,
+          variant: 'NORMAL' as const,
+        };
+      }),
+    });
+
+    const lowLimit = await request(app.getHttpServer())
+      .get('/cards/search')
+      .query({ q: 'limitmon', language: 'EN', limit: '0' });
+
+    expect(lowLimit.status).toBe(200);
+    expect(lowLimit.body.items).toHaveLength(1);
+
+    const highLimit = await request(app.getHttpServer())
+      .get('/cards/search')
+      .query({ q: 'limitmon', language: 'EN', limit: '999' });
+
+    expect(highLimit.status).toBe(200);
+    expect(highLimit.body.items).toHaveLength(50);
+  });
+
   it('GET /cards/:cardId/prices rejects invalid market and does not persist snapshots', async () => {
     const seeded = await prisma.cardIdentity.create({
       data: {

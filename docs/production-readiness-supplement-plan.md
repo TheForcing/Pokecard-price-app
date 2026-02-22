@@ -21,9 +21,9 @@
   - `GET /health/metrics`로 메트릭 조회 가능
 - [x] 공급자 timeout/retry/circuit breaker 적용
   - `PriceService`에 timeout/retry/circuit 로직 유지 + provider 결과/지연 통계 집계
-- [ ] API 통합 테스트 10개+ 추가(실패/경계값 중심)
-  - 이번 변경에서 관련 테스트 보강 완료(메트릭/가드레일)
-  - 추가 10개 목표는 계속 진행 필요
+- [x] API 통합 테스트 10개+ 추가(실패/경계값 중심)
+  - `apps/api/tests/db-integration.test.ts` 기준 16개 케이스(성공/실패/경계값)로 보강
+  - 메트릭/가드레일 및 외부 공급자 실패 시나리오 포함
 - [~] OCR confidence/공급자 latency 대시보드 구축
   - 대시보드/알람 인프라 스택(Prometheus/Grafana/Alertmanager) 및 기본 대시보드 프로비저닝 추가 완료
   - 실제 운영 채널(Slack/Email) 자격증명 연결 + 발화 검증은 환경별 시크릿 설정 후 수행 필요
@@ -40,6 +40,25 @@
   - 워크플로우/런북 존재, 실제 실행 기록 필요
 - [ ] 배포 게이트(Required checks) 고정
   - CI job 준비 완료, 원격 branch protection 강제 적용/검증 필요
+
+## 2026-02-22 추가 진행
+
+- [x] 가격 스냅샷 데이터 정책 초안 문서화
+  - 정책 문서: `docs/price-snapshot-policy.md`
+  - 운영 절차 문서: `docs/runbooks/price-snapshot-maintenance.md`
+- [ ] 원격/실운영 의존 항목
+  - Required checks 원격 강제 적용/검증(`GITHUB_TOKEN` + 관리자 권한 필요)
+  - 스테이징 리허설 실실행 기록(스테이징 DB 접근 필요)
+  - 알람 채널 실제 연동/발화 검증(Slack/Email 시크릿 필요)
+
+### 2026-02-22 실행 시도 기록
+
+- 환경 제약 확인
+  - `gh` CLI 미설치, `GITHUB_TOKEN/GH_TOKEN` 미설정, `DATABASE_URL` 미설정
+- 차선 조치 반영
+  - 원격 항목 일괄 실행 스크립트 추가: `scripts/run-remote-readiness-ops.sh`
+  - 스테이징 리허설 기록 자동화 스크립트 추가: `scripts/record-staging-rehearsal-result.sh`
+  - 관측 채널 설정 검증 스크립트 추가: `scripts/verify-observability-channel-config.sh`
 
 ---
 

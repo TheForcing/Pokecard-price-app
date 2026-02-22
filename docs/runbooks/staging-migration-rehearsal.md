@@ -65,3 +65,5 @@
 - GitHub Secrets 필요:
   - `STAGING_DATABASE_URL`
   - `STAGING_REDIS_URL` (선택)
+- 실행 결과 기록 자동화:
+  - `OWNER=<name> RESULT=<GO|NO-GO> MIGRATION_DURATION=<e.g. 8m> RECOVERY_DURATION=<e.g. 22m> SUMMARY="..." FOLLOW_UP="..." bash scripts/record-staging-rehearsal-result.sh`
