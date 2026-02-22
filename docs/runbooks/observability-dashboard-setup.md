@@ -103,6 +103,14 @@ bash scripts/observability-smoke.sh
 - Email: `email-alert` receiver 사용
 - 운영에서는 route receiver를 `default-log`에서 실제 채널 receiver로 변경
 
+운영 전 채널 설정 검증:
+
+```bash
+bash scripts/verify-observability-channel-config.sh
+```
+
+위 검증은 placeholder(`example.invalid`, `change-me`) 또는 `default-log` 라우팅이 남아 있으면 실패한다.
+
 기본 템플릿은 로컬 부팅 안전성을 위해 placeholder 값을 사용한다.
 운영 적용 전 반드시 아래 값을 실제 값으로 교체한다.
 
