@@ -290,7 +290,7 @@ export function UploadCameraCropSection({
 
   return (
     <>
-      <section style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 16 }}>
+      <section className="panel" style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           Market
           <select value={market} onChange={(e) => onMarketChange(e.target.value as Market)}>
@@ -386,13 +386,19 @@ export function UploadCameraCropSection({
         </button>
       </section>
 
+      {loading && (
+        <p className="muted" style={{ marginTop: 8, fontSize: 12 }}>
+          Processing image. This can take a few seconds; long requests are timed out automatically.
+        </p>
+      )}
+
       {qualityWarning && (
-        <p style={{ marginTop: 8, color: '#a04500', fontSize: 12 }}>
+        <p className="warn-text" style={{ marginTop: 8, fontSize: 12 }}>
           Quality check: {qualityWarning}
         </p>
       )}
       {imageMeta && (
-        <p style={{ marginTop: 4, color: '#555', fontSize: 12 }}>
+        <p className="muted" style={{ marginTop: 4, fontSize: 12 }}>
           Image size: {imageMeta.width} x {imageMeta.height}
         </p>
       )}
@@ -410,9 +416,9 @@ export function UploadCameraCropSection({
       )}
 
       {cropMode && preview && (
-        <section style={{ marginTop: 12, border: '1px solid #ddd', borderRadius: 12, padding: 12 }}>
+        <section className="panel" style={{ marginTop: 12 }}>
           <h2 style={{ margin: 0, fontSize: 16 }}>Manual Crop</h2>
-          <p style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
+          <p className="muted" style={{ marginTop: 6, fontSize: 12 }}>
             Drag to select the card area. Then apply crop.
           </p>
           <canvas
@@ -454,7 +460,7 @@ export function UploadCameraCropSection({
         </section>
       )}
 
-      <section style={{ marginTop: 16, border: '1px solid #ddd', borderRadius: 12, padding: 12 }}>
+      <section className="panel">
         <h2 style={{ margin: 0, fontSize: 16 }}>Preview</h2>
         {preview ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -464,7 +470,9 @@ export function UploadCameraCropSection({
             style={{ width: '100%', marginTop: 10, borderRadius: 10 }}
           />
         ) : (
-          <p style={{ opacity: 0.7, marginTop: 10 }}>Pick an image to preview.</p>
+          <p className="muted" style={{ marginTop: 10 }}>
+            Pick an image to preview.
+          </p>
         )}
       </section>
     </>

@@ -85,7 +85,7 @@
 - [x] 대시보드 URL 공유
 - [ ] 알람 채널(슬랙/이메일) 연결
 - [ ] 알람 테스트(의도적 실패) 1회 이상 성공
-- [ ] 온콜 runbook에 링크 추가
+- [x] 온콜 runbook에 링크 추가
 
 현재 기본 URL:
 
@@ -98,3 +98,4 @@
 - Prometheus 스크랩 샘플: `infra/observability/prometheus.yml`
 - 알람 룰 샘플: `infra/observability/alerts.yml`
 - 대시보드 연결 절차: `docs/runbooks/observability-dashboard-setup.md`
+- 장애 대응 런북: `docs/runbooks/incident-response.md`

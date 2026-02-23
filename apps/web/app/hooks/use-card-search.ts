@@ -2,6 +2,7 @@
 
 import type { CardIdentity, CardVariant, Language } from '@pokecard/shared';
 import { useMemo, useState } from 'react';
+import { fetchWithTimeout } from './fetch-with-timeout';
 
 type UseCardSearchParams = {
   apiBase: string;
@@ -39,7 +40,7 @@ export function useCardSearch({ apiBase }: UseCardSearchParams) {
       if (input.variant) params.set('variant', input.variant);
       params.set('limit', '20');
 
-      const res = await fetch(`${apiBase}/cards/search?${params.toString()}`);
+      const res = await fetchWithTimeout(`${apiBase}/cards/search?${params.toString()}`);
       if (!res.ok) throw new Error(`search failed: ${res.status}`);
 
       const data = (await res.json()) as { items: CardIdentity[] };

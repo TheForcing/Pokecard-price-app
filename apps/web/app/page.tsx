@@ -20,6 +20,10 @@ export default function HomePage() {
   const cardSearch = useCardSearch({ apiBase: API_BASE });
 
   const error = recognize.error ?? price.error ?? cardSearch.error;
+  const timeoutHint =
+    error && error.includes('timed out')
+      ? 'Try a smaller image, check network status, or retry after a few seconds.'
+      : null;
 
   async function handleRecognize(preview: string) {
     price.clearPrice();
@@ -31,11 +35,11 @@ export default function HomePage() {
   }
 
   return (
-    <main style={{ maxWidth: 980, margin: '0 auto', padding: 24 }}>
-      <h1 style={{ fontSize: 28, margin: 0 }}>PokéCard Price Finder</h1>
-      <p style={{ marginTop: 8, opacity: 0.8 }}>
-        Upload a Pokemon card photo, run recognition, then check low/high price.
-      </p>
+    <main className="app-shell">
+      <section className="app-hero">
+        <h1 style={{ fontSize: 34, margin: 0 }}>PokéCard Price Finder</h1>
+        <p>Upload a card image, verify recognition, then check live low/high market price.</p>
+      </section>
 
       <UploadCameraCropSection
         market={market}
@@ -52,7 +56,12 @@ export default function HomePage() {
         }}
       />
 
-      {error && <p style={{ marginTop: 12, color: 'crimson' }}>Error: {error}</p>}
+      {error && (
+        <p className="error-text">
+          Error: {error}
+          {timeoutHint ? ` (${timeoutHint})` : ''}
+        </p>
+      )}
 
       <CandidatesSection
         candidates={recognize.candidates}
@@ -90,8 +99,8 @@ export default function HomePage() {
         onGetPrice={handleGetPrice}
       />
 
-      <footer style={{ marginTop: 24, opacity: 0.7, fontSize: 12 }}>
-        Tip: Improve OCR + vector search + provider mapping for production.
+      <footer className="muted" style={{ marginTop: 24, fontSize: 12 }}>
+        Tip: Better photos and clear card boundaries usually improve OCR confidence.
       </footer>
     </main>
   );

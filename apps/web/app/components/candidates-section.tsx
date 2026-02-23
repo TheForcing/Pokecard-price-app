@@ -24,54 +24,35 @@ export function CandidatesSection({
   onGetPrice,
 }: CandidatesSectionProps) {
   return (
-    <section style={{ marginTop: 16, border: '1px solid #ddd', borderRadius: 12, padding: 12 }}>
-      <h2 style={{ margin: 0, fontSize: 16 }}>Candidates</h2>
+    <section className="panel">
+      <h2>Candidates</h2>
       {isLowConfidence && (
-        <p style={{ marginTop: 8, color: '#a04500', fontSize: 12 }}>
+        <p className="warn-text" style={{ marginTop: 8, fontSize: 12 }}>
           Low confidence. Please verify the candidate.
         </p>
       )}
       {candidates.length === 0 ? (
-        <p style={{ opacity: 0.7, marginTop: 10 }}>Run recognize to see candidates.</p>
+        <p className="muted" style={{ marginTop: 10 }}>
+          Run recognize to see candidates.
+        </p>
       ) : (
         <>
-          <ul
-            style={{
-              listStyle: 'none',
-              padding: 0,
-              marginTop: 10,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 10,
-            }}
-          >
+          <ul className="card-list">
             {displayedCandidates.map((candidate) => (
               <li
                 key={candidate.cardId}
-                style={{
-                  border: '1px solid #eee',
-                  borderRadius: 10,
-                  padding: 10,
-                  background: selected?.cardId === candidate.cardId ? '#f7f7ff' : 'white',
-                }}
+                className={`entity-card ${selected?.cardId === candidate.cardId ? 'selected' : ''}`}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                    <div
-                      style={{
-                        width: 64,
-                        height: 88,
-                        borderRadius: 8,
-                        border: '1px solid #eee',
-                        background: '#fafafa',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        overflow: 'hidden',
-                        color: '#999',
-                        fontSize: 11,
-                      }}
-                    >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 220 }}>
+                    <div className="thumb">
                       {candidate.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
@@ -85,19 +66,26 @@ export function CandidatesSection({
                     </div>
                     <div>
                       <div style={{ fontWeight: 600 }}>{candidate.name}</div>
-                      <div style={{ opacity: 0.75, fontSize: 12 }}>
+                      <div className="muted" style={{ fontSize: 12 }}>
                         {candidate.setCode ?? '-'} / {candidate.number ?? '-'} /{' '}
                         {candidate.language ?? '-'}
                       </div>
-                      <div style={{ opacity: 0.75, fontSize: 12 }}>
+                      <div className="muted" style={{ fontSize: 12 }}>
                         confidence: {candidate.confidence.toFixed(2)}
                       </div>
                     </div>
                   </div>
                   <div
-                    style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'end' }}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 8,
+                      alignItems: 'end',
+                      marginLeft: 'auto',
+                    }}
                   >
                     <button
+                      className="secondary"
                       onClick={() => {
                         onSelect(candidate);
                       }}
@@ -117,7 +105,12 @@ export function CandidatesSection({
             ))}
           </ul>
           {candidates.length > 5 && (
-            <button type="button" onClick={onToggleShowAll} style={{ marginTop: 8, height: 32 }}>
+            <button
+              className="ghost"
+              type="button"
+              onClick={onToggleShowAll}
+              style={{ marginTop: 8, height: 32 }}
+            >
               {showAllCandidates ? 'Show top 5' : 'Show all'}
             </button>
           )}

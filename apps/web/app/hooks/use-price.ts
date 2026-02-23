@@ -2,6 +2,7 @@
 
 import type { Market, PriceResponse } from '@pokecard/shared';
 import { useState } from 'react';
+import { fetchWithTimeout } from './fetch-with-timeout';
 
 type UsePriceParams = {
   apiBase: string;
@@ -16,7 +17,7 @@ export function usePrice({ apiBase }: UsePriceParams) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `${apiBase}/cards/${encodeURIComponent(cardId)}/prices?market=${market}`,
       );
       if (!res.ok) throw new Error(`price failed: ${res.status}`);
