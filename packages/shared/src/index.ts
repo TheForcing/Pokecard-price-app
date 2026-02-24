@@ -68,3 +68,23 @@ export interface PriceResponse {
   capturedAt?: string;
   fetchedAt: string; // ISO
 }
+
+export interface UpsertPriceRequest {
+  market: Market;
+  currency: string;
+  low: number | null;
+  high: number | null;
+  source: ExternalProvider;
+  priceType?: PriceType;
+  capturedAt?: string;
+  externalId?: string;
+  externalUrl?: string;
+  matchMethod?: string;
+  matchConfidence?: number;
+}
+
+export interface ApiErrorResponse {
+  statusCode: number;
+  message: string | string[];
+  error?: string;
+}

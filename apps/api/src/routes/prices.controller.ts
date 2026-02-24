@@ -1,4 +1,13 @@
-import { BadRequestException, Controller, Get, Inject, Param, Query } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Inject,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
 import type {
   CardIdentity,
   CardSearchResponse,
@@ -6,11 +15,98 @@ import type {
   Language,
   Market,
   PriceResponse,
+  PriceType,
+  UpsertPriceRequest,
 } from '@pokecard/shared';
 import { CardService } from '../services/card.service.js';
 import { PriceService } from '../services/price.service.js';
 
 type CardIdentityRecord = NonNullable<Awaited<ReturnType<CardService['getCardIdentity']>>>;
+
+const ALLOWED_MARKETS: Market[] = ['US', 'JP', 'KR'];
+const ALLOWED_PRICE_TYPES: PriceType[] = ['LISTING', 'AGGREGATED', 'SOLD'];
+const ALLOWED_SOURCES: UpsertPriceRequest['source'][] = [
+  'POKEMONTCG',
+  'TCGPLAYER',
+  'RAKUTEN',
+  'NAVER',
+];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object';
+}
+
+function isNullableNumber(value: unknown): value is number | null {
+  return value === null || (typeof value === 'number' && Number.isFinite(value));
+}
+
+function parseUpsertPricePayload(body: unknown): UpsertPriceRequest {
+  if (!isRecord(body)) {
+    throw new BadRequestException('request body is required');
+  }
+
+  const { market, currency, low, high, source, priceType, capturedAt, externalId, externalUrl } =
+    body;
+  const matchMethod = body.matchMethod;
+  const matchConfidence = body.matchConfidence;
+
+  if (typeof market !== 'string' || !ALLOWED_MARKETS.includes(market as Market)) {
+    throw new BadRequestException('invalid market');
+  }
+  if (
+    typeof source !== 'string' ||
+    !ALLOWED_SOURCES.includes(source as UpsertPriceRequest['source'])
+  ) {
+    throw new BadRequestException('source is required');
+  }
+  if (typeof currency !== 'string' || currency.trim().length === 0) {
+    throw new BadRequestException('currency is required');
+  }
+  if (!isNullableNumber(low)) {
+    throw new BadRequestException('low must be a number or null');
+  }
+  if (!isNullableNumber(high)) {
+    throw new BadRequestException('high must be a number or null');
+  }
+  if (
+    priceType != null &&
+    (typeof priceType !== 'string' || !ALLOWED_PRICE_TYPES.includes(priceType as PriceType))
+  ) {
+    throw new BadRequestException('invalid priceType');
+  }
+  if (capturedAt != null && typeof capturedAt !== 'string') {
+    throw new BadRequestException('capturedAt must be an ISO datetime string');
+  }
+  if (externalId != null && typeof externalId !== 'string') {
+    throw new BadRequestException('externalId must be a string');
+  }
+  if (externalUrl != null && typeof externalUrl !== 'string') {
+    throw new BadRequestException('externalUrl must be a string');
+  }
+  if (matchMethod != null && typeof matchMethod !== 'string') {
+    throw new BadRequestException('matchMethod must be a string');
+  }
+  if (
+    matchConfidence != null &&
+    (typeof matchConfidence !== 'number' || !Number.isFinite(matchConfidence))
+  ) {
+    throw new BadRequestException('matchConfidence must be a number');
+  }
+
+  return {
+    market: market as Market,
+    source: source as UpsertPriceRequest['source'],
+    currency: currency.trim(),
+    low,
+    high,
+    ...(priceType != null ? { priceType: priceType as PriceType } : {}),
+    ...(capturedAt != null ? { capturedAt } : {}),
+    ...(externalId != null ? { externalId } : {}),
+    ...(externalUrl != null ? { externalUrl } : {}),
+    ...(matchMethod != null ? { matchMethod } : {}),
+    ...(matchConfidence != null ? { matchConfidence } : {}),
+  };
+}
 
 function toCardIdentityDto(card: CardIdentityRecord): CardIdentity {
   return {
@@ -66,11 +162,19 @@ export class PricesController {
     @Param('cardId') cardId: string,
     @Query('market') marketQuery?: Market,
   ): Promise<PriceResponse> {
-    const allowedMarkets: Market[] = ['US', 'JP', 'KR'];
-    if (marketQuery && !allowedMarkets.includes(marketQuery)) {
+    if (marketQuery && !ALLOWED_MARKETS.includes(marketQuery)) {
       throw new BadRequestException('invalid market');
     }
     const market: Market = marketQuery ?? 'US';
     return this.priceService.getPrice(cardId, market);
+  }
+
+  @Post(':cardId/prices')
+  async upsertPrice(
+    @Param('cardId') cardId: string,
+    @Body() body: unknown,
+  ): Promise<PriceResponse> {
+    const payload = parseUpsertPricePayload(body);
+    return this.priceService.registerPrice(cardId, payload);
   }
 }
