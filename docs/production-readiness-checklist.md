@@ -11,52 +11,52 @@
 
 ## 1) 릴리즈 게이트 (필수)
 
-- [ ] CI에서 `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`가 PR마다 통과
+- [x] CI에서 `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`가 PR마다 통과
 - [ ] main 머지 차단 규칙(Required checks) 적용
-- [ ] 버전 정책/릴리즈 노트/롤백 절차 문서화
+- [x] 버전 정책/릴리즈 노트/롤백 절차 문서화
 - [ ] 스테이징에서 프로덕션과 동일한 환경변수 및 DB 마이그레이션 검증
 
 ## 2) API 안정성/보안 (필수)
 
-- [ ] 글로벌 요청 제한(rate limit) 적용 (IP/토큰 기준)
-- [ ] 외부 공급자 호출에 timeout/retry/circuit breaker 적용
-- [ ] 입력 검증 상한(이미지 크기/포맷/필수 필드) 강제 + 실패 코드 일관화
-- [ ] 민감정보 비노출(Provider 키), 로그 마스킹, `.env` 관리 정책 확정
+- [x] 글로벌 요청 제한(rate limit) 적용 (IP/토큰 기준)
+- [x] 외부 공급자 호출에 timeout/retry/circuit breaker 적용
+- [x] 입력 검증 상한(이미지 크기/포맷/필수 필드) 강제 + 실패 코드 일관화
+- [x] 민감정보 비노출(Provider 키), 로그 마스킹, `.env` 관리 정책 확정
 - [x] CORS/보안 헤더 정책(허용 도메인 최소화) 확정
 
 ## 3) 데이터/스토리지 (필수)
 
-- [ ] Prisma 마이그레이션 무중단 또는 저위험 절차 문서화
+- [x] Prisma 마이그레이션 무중단 또는 저위험 절차 문서화
 - [x] 가격 스냅샷 적재 정책(보존기간/중복 기준/정합성) 확정
 - [ ] 백업/복구(RPO/RTO) 목표 정의 및 복구 리허설 1회 이상
 - [ ] DB 커넥션/인덱스 점검(핵심 조회 쿼리 explain 확인)
 
 ## 4) 캐시/성능 (필수)
 
-- [ ] Redis를 primary cache로 사용(멀티 인스턴스 일관성 확보)
-- [ ] 캐시 키/TTL/무효화 정책 확정 및 문서화(`docs/cache-policy.md`와 정합)
+- [x] Redis를 primary cache로 사용(멀티 인스턴스 일관성 확보)
+- [x] 캐시 키/TTL/무효화 정책 확정 및 문서화(`docs/cache-policy.md`와 정합)
 - [ ] 캐시 hit/miss 메트릭 수집 및 알람 임계치 설정
 - [ ] API p95/p99 latency SLO 정의 및 부하 테스트 통과
 
 ## 5) 관측성/운영 (필수)
 
-- [ ] 구조화 로그(JSON) + 요청 ID(trace/correlation id) 적용
-- [ ] 핵심 메트릭 대시보드 구축: 성공률, 에러율, OCR confidence 분포, 공급자별 지연/실패율
+- [x] 구조화 로그(JSON) + 요청 ID(trace/correlation id) 적용
+- [x] 핵심 메트릭 대시보드 구축: 성공률, 에러율, OCR confidence 분포, 공급자별 지연/실패율
 - [ ] 알람 룰 설정: 5xx 급증, 공급자 실패율 급증, DB 연결 실패, 캐시 장애
-- [ ] 온콜 대응 문서(runbook): 장애 분류, 우회, 복구 절차
+- [x] 온콜 대응 문서(runbook): 장애 분류, 우회, 복구 절차
 
 ## 6) 테스트 커버리지 (필수)
 
 - [x] API 통합 테스트에 성공/실패/경계값 케이스 충분히 포함
-- [ ] DB 연동 테스트를 CI 또는 nightly에 고정 실행
+- [x] DB 연동 테스트를 CI 또는 nightly에 고정 실행
 - [x] Web 핵심 플로우 E2E 1~2개 자동화(업로드 -> 인식 -> 후보선택 -> 가격조회)
-- [ ] 외부 공급자 장애 시 fallback 동작 테스트 고정
+- [x] 외부 공급자 장애 시 fallback 동작 테스트 고정
 
 ## 7) 제품 품질/UX (권장)
 
 - [ ] OCR 저신뢰 결과 UX(후보 선택/수동 검색)가 모바일 포함 안정 동작
-- [ ] 사용자 에러 메시지(재시도 방법 포함) 통일
-- [ ] 큰 이미지 업로드 시 진행 상태/타임아웃 안내
+- [x] 사용자 에러 메시지(재시도 방법 포함) 통일
+- [x] 큰 이미지 업로드 시 진행 상태/타임아웃 안내
 - [ ] 접근성 기본 점검(버튼 라벨, 키보드 포커스, 대비)
 
 ## 8) 인프라/배포 (권장)
@@ -77,7 +77,7 @@
 - [x] Redis 실캐시 전환 + hit/miss 메트릭
 - [x] 공급자 timeout/retry/circuit breaker 적용
 - [x] API 통합 테스트 10개+ 추가(실패/경계값 중심)
-- [ ] OCR confidence/공급자 latency 대시보드 구축
+- [x] OCR confidence/공급자 latency 대시보드 구축
 - [x] rate limit + 이미지 업로드 제한 강화
 - [ ] 스테이징 리허설(마이그레이션 + 롤백)
 - [ ] 배포 게이트(Required checks) 고정

@@ -31,6 +31,7 @@ function createCardServiceMock() {
 function createPriceServiceMock() {
   return {
     getPrice: vi.fn(),
+    registerPrice: vi.fn(),
     getMetricsSnapshot: vi.fn(() => ({
       cache: {
         redis: { hit: 0, miss: 0, set: 0, read_error: 0, write_error: 0 },
@@ -236,6 +237,61 @@ describe('API integration', () => {
 
     expect(res.status).toBe(500);
     expect(res.body.statusCode).toBe(500);
+  });
+
+  it('POST /cards/:cardId/prices rejects invalid payload market', async () => {
+    const res = await request(app.getHttpServer()).post('/cards/card_1/prices').send({
+      market: 'EU',
+      currency: 'USD',
+      low: 10,
+      high: 20,
+      source: 'TCGPLAYER',
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('invalid market');
+    expect(priceServiceMock.registerPrice).not.toHaveBeenCalled();
+  });
+
+  it('POST /cards/:cardId/prices stores manual snapshot through price service', async () => {
+    const payload: PriceResponse = {
+      cardId: 'card_1',
+      market: 'US',
+      currency: 'USD',
+      low: 8,
+      high: 15,
+      source: 'TCGPLAYER',
+      priceType: 'LISTING',
+      capturedAt: new Date().toISOString(),
+      fetchedAt: new Date().toISOString(),
+    };
+    priceServiceMock.registerPrice.mockResolvedValue(payload);
+
+    const res = await request(app.getHttpServer()).post('/cards/card_1/prices').send({
+      market: 'US',
+      currency: 'USD',
+      low: 8,
+      high: 15,
+      source: 'TCGPLAYER',
+      priceType: 'LISTING',
+      externalId: 'manual:card_1:TCGPLAYER:US',
+      matchMethod: 'manual',
+      matchConfidence: 0.9,
+    });
+
+    expect(res.status).toBe(201);
+    expect(priceServiceMock.registerPrice).toHaveBeenCalledWith('card_1', {
+      market: 'US',
+      currency: 'USD',
+      low: 8,
+      high: 15,
+      source: 'TCGPLAYER',
+      priceType: 'LISTING',
+      externalId: 'manual:card_1:TCGPLAYER:US',
+      matchMethod: 'manual',
+      matchConfidence: 0.9,
+    });
+    expect(res.body).toMatchObject(payload);
   });
 
   it('POST /recognize validates required imageBase64', async () => {

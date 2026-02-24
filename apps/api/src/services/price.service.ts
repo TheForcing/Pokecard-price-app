@@ -4,10 +4,11 @@ import {
   Inject,
   Injectable,
   Logger,
+  NotFoundException,
   OnModuleDestroy,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import type { Market, PriceResponse } from '@pokecard/shared';
+import type { Market, PriceResponse, UpsertPriceRequest } from '@pokecard/shared';
 import {
   ExternalProvider,
   Market as PrismaMarket,
@@ -901,6 +902,103 @@ export class PriceService implements OnModuleDestroy {
         raw: price as unknown as Prisma.JsonObject,
       },
     });
+  }
+
+  async registerPrice(cardId: string, payload: UpsertPriceRequest): Promise<PriceResponse> {
+    if (!cardId) {
+      throw new BadRequestException('cardId is required');
+    }
+
+    const currency = payload.currency?.trim();
+    if (!currency) {
+      throw new BadRequestException('currency is required');
+    }
+
+    const low = payload.low;
+    const high = payload.high;
+    if (low !== null && (!Number.isFinite(low) || low < 0)) {
+      throw new BadRequestException('low must be a non-negative number or null');
+    }
+    if (high !== null && (!Number.isFinite(high) || high < 0)) {
+      throw new BadRequestException('high must be a non-negative number or null');
+    }
+    if (low !== null && high !== null && high < low) {
+      throw new BadRequestException('high must be greater than or equal to low');
+    }
+
+    const capturedAt = payload.capturedAt ? new Date(payload.capturedAt) : new Date();
+    if (Number.isNaN(capturedAt.getTime())) {
+      throw new BadRequestException('capturedAt must be a valid ISO datetime');
+    }
+
+    if (
+      payload.matchConfidence != null &&
+      (!Number.isFinite(payload.matchConfidence) ||
+        payload.matchConfidence < 0 ||
+        payload.matchConfidence > 1)
+    ) {
+      throw new BadRequestException('matchConfidence must be a number between 0 and 1');
+    }
+
+    const card = await this.prisma.cardIdentity.findUnique({ where: { id: cardId } });
+    if (!card) {
+      throw new NotFoundException('card not found');
+    }
+
+    const externalId =
+      payload.externalId?.trim() || `manual:${card.id}:${payload.source}:${payload.market}`;
+    const provider = payload.source as ExternalProvider;
+    const market = payload.market as PrismaMarket;
+    const map = await this.prisma.externalProductMap.upsert({
+      where: {
+        external_provider_unique: {
+          provider,
+          externalId,
+        },
+      },
+      update: {
+        cardIdentityId: card.id,
+        provider,
+        market,
+        externalUrl: payload.externalUrl?.trim() || null,
+        matchMethod: payload.matchMethod?.trim() || 'manual',
+        matchConfidence: payload.matchConfidence ?? 1,
+        active: true,
+        meta: {
+          source: 'manual-upsert',
+        },
+      },
+      create: {
+        cardIdentityId: card.id,
+        provider,
+        market,
+        externalId,
+        externalUrl: payload.externalUrl?.trim() || null,
+        matchMethod: payload.matchMethod?.trim() || 'manual',
+        matchConfidence: payload.matchConfidence ?? 1,
+        active: true,
+        meta: {
+          source: 'manual-upsert',
+        },
+      },
+    });
+
+    const nowIso = new Date().toISOString();
+    const response: PriceResponse = {
+      cardId: card.id,
+      market: payload.market,
+      currency,
+      low,
+      high,
+      source: provider,
+      priceType: payload.priceType ?? 'LISTING',
+      capturedAt: capturedAt.toISOString(),
+      fetchedAt: nowIso,
+    };
+
+    await this.storeSnapshot(map, response);
+    await this.writeCache(this.getCacheKey(card.id, payload.market), response);
+    return response;
   }
 
   async getPrice(cardId: string, market: Market): Promise<PriceResponse> {

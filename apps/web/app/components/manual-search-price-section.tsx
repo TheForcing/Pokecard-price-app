@@ -38,9 +38,9 @@ export function ManualSearchPriceSection({
 
   return (
     <>
-      <section style={{ marginTop: 16, border: '1px solid #ddd', borderRadius: 12, padding: 12 }}>
-        <h2 style={{ margin: 0, fontSize: 16 }}>Manual Search</h2>
-        <p style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
+      <section className="panel">
+        <h2>Manual Search</h2>
+        <p className="muted" style={{ marginTop: 6, fontSize: 12 }}>
           Use this when OCR is uncertain. Search by name + set/number + variant.
         </p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 10 }}>
@@ -103,46 +103,27 @@ export function ManualSearchPriceSection({
         </div>
 
         {manualResults.length === 0 ? (
-          <p style={{ marginTop: 10, opacity: 0.7 }}>No manual results yet.</p>
+          <p className="muted" style={{ marginTop: 10 }}>
+            No manual results yet.
+          </p>
         ) : (
           <>
-            <ul
-              style={{
-                listStyle: 'none',
-                padding: 0,
-                marginTop: 10,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 10,
-              }}
-            >
+            <ul className="card-list">
               {displayedManualResults.map((card) => (
                 <li
                   key={card.id}
-                  style={{
-                    border: '1px solid #eee',
-                    borderRadius: 10,
-                    padding: 10,
-                    background: manualSelected?.id === card.id ? '#f7f7ff' : 'white',
-                  }}
+                  className={`entity-card ${manualSelected?.id === card.id ? 'selected' : ''}`}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                      <div
-                        style={{
-                          width: 64,
-                          height: 88,
-                          borderRadius: 8,
-                          border: '1px solid #eee',
-                          background: '#fafafa',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          overflow: 'hidden',
-                          color: '#999',
-                          fontSize: 11,
-                        }}
-                      >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 220 }}>
+                      <div className="thumb">
                         {card.imageUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
@@ -156,11 +137,13 @@ export function ManualSearchPriceSection({
                       </div>
                       <div>
                         <div style={{ fontWeight: 600 }}>{card.name}</div>
-                        <div style={{ opacity: 0.75, fontSize: 12 }}>
+                        <div className="muted" style={{ fontSize: 12 }}>
                           {card.language} / {card.setCode} / {card.collectorNumber} / {card.variant}
                         </div>
                         {card.setName && (
-                          <div style={{ opacity: 0.7, fontSize: 12 }}>{card.setName}</div>
+                          <div className="muted" style={{ fontSize: 12 }}>
+                            {card.setName}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -173,6 +156,7 @@ export function ManualSearchPriceSection({
                       }}
                     >
                       <button
+                        className="secondary"
                         onClick={() => {
                           onSelectManual(card);
                         }}
@@ -190,6 +174,7 @@ export function ManualSearchPriceSection({
             </ul>
             {manualResults.length > 5 && (
               <button
+                className="ghost"
                 type="button"
                 onClick={onToggleShowAllManual}
                 style={{ marginTop: 8, height: 32 }}
@@ -201,25 +186,31 @@ export function ManualSearchPriceSection({
         )}
       </section>
 
-      <section style={{ marginTop: 16, border: '1px solid #ddd', borderRadius: 12, padding: 12 }}>
-        <h2 style={{ margin: 0, fontSize: 16 }}>Price</h2>
+      <section className="panel">
+        <h2>Price</h2>
         {!price ? (
-          <p style={{ opacity: 0.7, marginTop: 10 }}>Select a candidate and click Get Price.</p>
+          <p className="muted" style={{ marginTop: 10 }}>
+            Select a candidate and click Get Price.
+          </p>
         ) : (
-          <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div style={{ border: '1px solid #eee', borderRadius: 10, padding: 10 }}>
-              <div style={{ opacity: 0.75, fontSize: 12 }}>Low ({price.source})</div>
-              <div style={{ fontSize: 22, fontWeight: 700 }}>
+          <div className="price-grid">
+            <div className="price-card">
+              <div className="muted" style={{ fontSize: 12 }}>
+                Low ({price.source})
+              </div>
+              <div className="price-value">
                 {price.low == null ? '-' : `${price.currency} ${price.low}`}
               </div>
             </div>
-            <div style={{ border: '1px solid #eee', borderRadius: 10, padding: 10 }}>
-              <div style={{ opacity: 0.75, fontSize: 12 }}>High ({price.source})</div>
-              <div style={{ fontSize: 22, fontWeight: 700 }}>
+            <div className="price-card">
+              <div className="muted" style={{ fontSize: 12 }}>
+                High ({price.source})
+              </div>
+              <div className="price-value">
                 {price.high == null ? '-' : `${price.currency} ${price.high}`}
               </div>
             </div>
-            <div style={{ gridColumn: '1 / -1', opacity: 0.75, fontSize: 12 }}>
+            <div className="muted" style={{ gridColumn: '1 / -1', fontSize: 12 }}>
               fetchedAt: {price.fetchedAt}
             </div>
           </div>

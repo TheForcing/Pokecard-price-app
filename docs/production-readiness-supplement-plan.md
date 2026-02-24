@@ -60,6 +60,23 @@
   - 스테이징 리허설 기록 자동화 스크립트 추가: `scripts/record-staging-rehearsal-result.sh`
   - 관측 채널 설정 검증 스크립트 추가: `scripts/verify-observability-channel-config.sh`
 
+## 2026-02-23 마무리 진행
+
+- [x] 릴리즈/버전/롤백 운영 정책 문서 추가
+  - `docs/runbooks/release-version-rollback.md`
+- [x] 보안/시크릿 운영 정책 문서 추가
+  - `docs/security-secrets-policy.md`
+- [x] 온콜/장애 대응 런북 추가
+  - `docs/runbooks/incident-response.md`
+- [x] Web 요청 타임아웃 및 사용자 안내 보강
+  - `apps/web/app/hooks/fetch-with-timeout.ts`
+  - `apps/web/app/page.tsx`
+  - `apps/web/app/components/upload-camera-crop-section.tsx`
+- [~] 원격 권한/실환경 의존 항목은 계속 미완
+  - Required checks 원격 강제 적용/검증
+  - 스테이징 리허설 실실행 기록
+  - 알람 채널 실연동/발화 검증
+
 ---
 
 ## P0 (즉시, 1주 내)
