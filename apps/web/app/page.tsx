@@ -57,7 +57,7 @@ export default function HomePage() {
       />
 
       {error && (
-        <p className="error-text">
+        <p className="error-text" role="alert" aria-live="assertive">
           Error: {error}
           {timeoutHint ? ` (${timeoutHint})` : ''}
         </p>

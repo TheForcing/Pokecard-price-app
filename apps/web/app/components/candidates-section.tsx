@@ -110,6 +110,7 @@ export function CandidatesSection({
               type="button"
               onClick={onToggleShowAll}
               style={{ marginTop: 8, height: 32 }}
+              aria-expanded={showAllCandidates}
             >
               {showAllCandidates ? 'Show top 5' : 'Show all'}
             </button>
