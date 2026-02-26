@@ -32,6 +32,13 @@ export function UploadCameraCropSection({
   onRecognize,
   onResetFlow,
 }: UploadCameraCropSectionProps) {
+  const marketSelectId = 'market-select';
+  const languageSelectId = 'language-select';
+  const imageInputId = 'image-input';
+  const cameraErrorId = 'camera-error';
+  const qualityWarningId = 'quality-warning';
+  const cropMessageId = 'crop-message';
+
   const [preview, setPreview] = useState<string | null>(null);
   const [original, setOriginal] = useState<string | null>(null);
   const [imageMeta, setImageMeta] = useState<ImageMeta | null>(null);
@@ -52,9 +59,11 @@ export function UploadCameraCropSection({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const cropCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const cropImageRef = useRef<HTMLImageElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isDraggingCrop = useRef(false);
   const cropStart = useRef<{ x: number; y: number } | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const [selectedFileName, setSelectedFileName] = useState('');
 
   useEffect(() => {
     async function startCamera() {
@@ -157,8 +166,10 @@ export function UploadCameraCropSection({
     if (!file) {
       setPreview(null);
       setOriginal(null);
+      setSelectedFileName('');
       return;
     }
+    setSelectedFileName(file.name);
     const dataUrl = await fileToDataUrl(file);
     setPreview(dataUrl);
     setOriginal(dataUrl);
@@ -183,6 +194,7 @@ export function UploadCameraCropSection({
     onResetFlow();
     setPreview(dataUrl);
     setOriginal(dataUrl);
+    setSelectedFileName('camera-capture.jpg');
     setCropMode(false);
     setCropRect(null);
     setCropScale(null);
@@ -291,32 +303,61 @@ export function UploadCameraCropSection({
   return (
     <>
       <section className="panel" style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <label
+          htmlFor={marketSelectId}
+          style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
+        >
           Market
-          <select value={market} onChange={(e) => onMarketChange(e.target.value as Market)}>
+          <select
+            id={marketSelectId}
+            value={market}
+            onChange={(e) => onMarketChange(e.target.value as Market)}
+          >
             <option value="US">US</option>
             <option value="JP">JP</option>
             <option value="KR">KR</option>
           </select>
         </label>
 
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <label
+          htmlFor={languageSelectId}
+          style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
+        >
           Card Language
-          <select value={language} onChange={(e) => onLanguageChange(e.target.value as Language)}>
+          <select
+            id={languageSelectId}
+            value={language}
+            onChange={(e) => onLanguageChange(e.target.value as Language)}
+          >
             <option value="EN">EN</option>
             <option value="JA">JA</option>
             <option value="KO">KO</option>
           </select>
         </label>
 
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <label htmlFor={imageInputId} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           Image
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={(e) => onPick(e.target.files?.[0] ?? null)}
-          />
+          <div className="file-picker">
+            <input
+              id={imageInputId}
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(e) => onPick(e.target.files?.[0] ?? null)}
+              style={{ display: 'none' }}
+            />
+            <button
+              type="button"
+              className="secondary file-picker-btn"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Choose Image
+            </button>
+            <span className={`file-picker-name ${selectedFileName ? '' : 'placeholder'}`}>
+              {selectedFileName || 'No file selected'}
+            </span>
+          </div>
         </label>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -360,6 +401,8 @@ export function UploadCameraCropSection({
               onClick={() => setCameraActive((current) => !current)}
               style={{ height: 40 }}
               type="button"
+              aria-pressed={cameraActive}
+              aria-describedby={cameraError ? cameraErrorId : undefined}
             >
               {cameraActive ? 'Stop Camera' : 'Use Camera'}
             </button>
@@ -372,7 +415,11 @@ export function UploadCameraCropSection({
               Capture
             </button>
           </div>
-          {cameraError && <div style={{ color: 'crimson', fontSize: 12 }}>{cameraError}</div>}
+          {cameraError && (
+            <div id={cameraErrorId} role="alert" style={{ color: 'crimson', fontSize: 12 }}>
+              {cameraError}
+            </div>
+          )}
         </div>
 
         <button
@@ -387,13 +434,23 @@ export function UploadCameraCropSection({
       </section>
 
       {loading && (
-        <p className="muted" style={{ marginTop: 8, fontSize: 12 }}>
+        <p
+          className="muted"
+          role="status"
+          aria-live="polite"
+          style={{ marginTop: 8, fontSize: 12 }}
+        >
           Processing image. This can take a few seconds; long requests are timed out automatically.
         </p>
       )}
 
       {qualityWarning && (
-        <p className="warn-text" style={{ marginTop: 8, fontSize: 12 }}>
+        <p
+          id={qualityWarningId}
+          className="warn-text"
+          role="alert"
+          style={{ marginTop: 8, fontSize: 12 }}
+        >
           Quality check: {qualityWarning}
         </p>
       )}
@@ -427,6 +484,7 @@ export function UploadCameraCropSection({
             onPointerMove={onCropPointerMove}
             onPointerUp={onCropPointerUp}
             onPointerLeave={onCropPointerUp}
+            aria-label="Manual crop canvas"
             style={{
               width: '100%',
               maxWidth: MAX_CROP_PREVIEW,
@@ -451,9 +509,18 @@ export function UploadCameraCropSection({
               Cancel
             </button>
           </div>
-          {cropMessage && <div style={{ marginTop: 6, fontSize: 12 }}>{cropMessage}</div>}
+          {cropMessage && (
+            <div
+              id={cropMessageId}
+              role="status"
+              aria-live="polite"
+              style={{ marginTop: 6, fontSize: 12 }}
+            >
+              {cropMessage}
+            </div>
+          )}
           {autoCropFailed && (
-            <div style={{ marginTop: 6, color: '#a04500', fontSize: 12 }}>
+            <div role="alert" style={{ marginTop: 6, color: '#a04500', fontSize: 12 }}>
               Auto crop failed. Manual crop recommended.
             </div>
           )}

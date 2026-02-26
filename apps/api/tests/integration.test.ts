@@ -294,6 +294,37 @@ describe('API integration', () => {
     expect(res.body).toMatchObject(payload);
   });
 
+  it('POST /cards/:cardId/prices rejects invalid capturedAt format', async () => {
+    const res = await request(app.getHttpServer()).post('/cards/card_1/prices').send({
+      market: 'US',
+      currency: 'USD',
+      low: 8,
+      high: 15,
+      source: 'TCGPLAYER',
+      capturedAt: 'not-a-date',
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('capturedAt must be a valid ISO datetime string');
+    expect(priceServiceMock.registerPrice).not.toHaveBeenCalled();
+  });
+
+  it('POST /cards/:cardId/prices rejects out-of-range matchConfidence', async () => {
+    const res = await request(app.getHttpServer()).post('/cards/card_1/prices').send({
+      market: 'US',
+      currency: 'USD',
+      low: 8,
+      high: 15,
+      source: 'TCGPLAYER',
+      matchMethod: 'manual',
+      matchConfidence: 1.2,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('matchConfidence must be a number between 0 and 1');
+    expect(priceServiceMock.registerPrice).not.toHaveBeenCalled();
+  });
+
   it('POST /recognize validates required imageBase64', async () => {
     const res = await request(app.getHttpServer())
       .post('/recognize')

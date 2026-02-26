@@ -40,6 +40,10 @@ function isNullableNumber(value: unknown): value is number | null {
   return value === null || (typeof value === 'number' && Number.isFinite(value));
 }
 
+function isValidIsoDateTimeString(value: string): boolean {
+  return Number.isFinite(Date.parse(value));
+}
+
 function parseUpsertPricePayload(body: unknown): UpsertPriceRequest {
   if (!isRecord(body)) {
     throw new BadRequestException('request body is required');
@@ -74,8 +78,11 @@ function parseUpsertPricePayload(body: unknown): UpsertPriceRequest {
   ) {
     throw new BadRequestException('invalid priceType');
   }
-  if (capturedAt != null && typeof capturedAt !== 'string') {
-    throw new BadRequestException('capturedAt must be an ISO datetime string');
+  if (
+    capturedAt != null &&
+    (typeof capturedAt !== 'string' || !isValidIsoDateTimeString(capturedAt))
+  ) {
+    throw new BadRequestException('capturedAt must be a valid ISO datetime string');
   }
   if (externalId != null && typeof externalId !== 'string') {
     throw new BadRequestException('externalId must be a string');
@@ -88,9 +95,12 @@ function parseUpsertPricePayload(body: unknown): UpsertPriceRequest {
   }
   if (
     matchConfidence != null &&
-    (typeof matchConfidence !== 'number' || !Number.isFinite(matchConfidence))
+    (typeof matchConfidence !== 'number' ||
+      !Number.isFinite(matchConfidence) ||
+      matchConfidence < 0 ||
+      matchConfidence > 1)
   ) {
-    throw new BadRequestException('matchConfidence must be a number');
+    throw new BadRequestException('matchConfidence must be a number between 0 and 1');
   }
 
   return {

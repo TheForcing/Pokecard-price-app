@@ -31,6 +31,11 @@ export function ManualSearchPriceSection({
   onToggleShowAllManual,
   onGetPrice,
 }: ManualSearchPriceSectionProps) {
+  const manualNameId = 'manual-name';
+  const manualSetCodeId = 'manual-set-code';
+  const manualNumberId = 'manual-number';
+  const manualVariantId = 'manual-variant';
+
   const [manualQuery, setManualQuery] = useState('');
   const [manualSetCode, setManualSetCode] = useState('');
   const [manualNumber, setManualNumber] = useState('');
@@ -44,33 +49,49 @@ export function ManualSearchPriceSection({
           Use this when OCR is uncertain. Search by name + set/number + variant.
         </p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 10 }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label
+            htmlFor={manualNameId}
+            style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
+          >
             Name
             <input
+              id={manualNameId}
               value={manualQuery}
               onChange={(event) => setManualQuery(event.target.value)}
               placeholder="Pikachu"
             />
           </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label
+            htmlFor={manualSetCodeId}
+            style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
+          >
             Set Code
             <input
+              id={manualSetCodeId}
               value={manualSetCode}
               onChange={(event) => setManualSetCode(event.target.value)}
               placeholder="swsh4"
             />
           </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label
+            htmlFor={manualNumberId}
+            style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
+          >
             Number
             <input
+              id={manualNumberId}
               value={manualNumber}
               onChange={(event) => setManualNumber(event.target.value)}
               placeholder="043"
             />
           </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label
+            htmlFor={manualVariantId}
+            style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
+          >
             Variant
             <select
+              id={manualVariantId}
               value={manualVariant}
               onChange={(event) => setManualVariant(event.target.value as CardVariant | '')}
             >
@@ -178,6 +199,7 @@ export function ManualSearchPriceSection({
                 type="button"
                 onClick={onToggleShowAllManual}
                 style={{ marginTop: 8, height: 32 }}
+                aria-expanded={showAllManualResults}
               >
                 {showAllManualResults ? 'Show top 5' : 'Show all'}
               </button>
@@ -188,33 +210,35 @@ export function ManualSearchPriceSection({
 
       <section className="panel">
         <h2>Price</h2>
-        {!price ? (
-          <p className="muted" style={{ marginTop: 10 }}>
-            Select a candidate and click Get Price.
-          </p>
-        ) : (
-          <div className="price-grid">
-            <div className="price-card">
-              <div className="muted" style={{ fontSize: 12 }}>
-                Low ({price.source})
+        <div aria-live="polite" aria-atomic="true">
+          {!price ? (
+            <p className="muted" style={{ marginTop: 10 }}>
+              Select a candidate and click Get Price.
+            </p>
+          ) : (
+            <div className="price-grid">
+              <div className="price-card">
+                <div className="muted" style={{ fontSize: 12 }}>
+                  Low ({price.source})
+                </div>
+                <div className="price-value">
+                  {price.low == null ? '-' : `${price.currency} ${price.low}`}
+                </div>
               </div>
-              <div className="price-value">
-                {price.low == null ? '-' : `${price.currency} ${price.low}`}
+              <div className="price-card">
+                <div className="muted" style={{ fontSize: 12 }}>
+                  High ({price.source})
+                </div>
+                <div className="price-value">
+                  {price.high == null ? '-' : `${price.currency} ${price.high}`}
+                </div>
+              </div>
+              <div className="muted" style={{ gridColumn: '1 / -1', fontSize: 12 }}>
+                fetchedAt: {price.fetchedAt}
               </div>
             </div>
-            <div className="price-card">
-              <div className="muted" style={{ fontSize: 12 }}>
-                High ({price.source})
-              </div>
-              <div className="price-value">
-                {price.high == null ? '-' : `${price.currency} ${price.high}`}
-              </div>
-            </div>
-            <div className="muted" style={{ gridColumn: '1 / -1', fontSize: 12 }}>
-              fetchedAt: {price.fetchedAt}
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </section>
     </>
   );
