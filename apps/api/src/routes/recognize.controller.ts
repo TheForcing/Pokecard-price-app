@@ -24,7 +24,7 @@ import { createRequire } from 'module';
 import os from 'os';
 import path from 'path';
 import sharp from 'sharp';
-import Tesseract, { type RecognizeResult } from 'tesseract.js';
+import Tesseract, { createWorker, type RecognizeResult } from 'tesseract.js';
 import { CardService } from '../services/card.service.js';
 import {
   OCR_MAX_LINES,
@@ -43,15 +43,16 @@ import {
 
 const DEFAULT_MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const DEFAULT_TOP_K = 10;
-const LOW_CONFIDENCE_THRESHOLD = 0.5;
+const DEFAULT_LOW_CONFIDENCE_THRESHOLD = 0.35;
 const OCR_NAME_OFFSET_RATIO = 0.12;
 const OCR_NAME_HEIGHT_RATIO = 0.22;
-const OCR_NAME_LEFT_WIDTH_RATIO = 0.72;
+const OCR_NAME_LEFT_WIDTH_RATIO = 0.65;
 const OCR_NAME_MIN_LEFT_WIDTH = 140;
 const OCR_NAME_BANDS = [
-  { offsetRatio: 0.08, heightRatio: 0.18 },
-  { offsetRatio: 0.12, heightRatio: 0.22 },
-  { offsetRatio: 0.16, heightRatio: 0.18 },
+  { offsetRatio: 0.02, heightRatio: 0.12 },
+  { offsetRatio: 0.05, heightRatio: 0.14 },
+  { offsetRatio: 0.09, heightRatio: 0.16 },
+  { offsetRatio: 0.13, heightRatio: 0.18 },
 ];
 
 const OCR_LANGUAGE_MAP: Record<Language, string> = {
@@ -74,9 +75,82 @@ const EASY_OCR_ACCEPT_CONFIDENCE = 0.42;
 const EASY_OCR_ACCEPT_LINE_SCORE = 0.58;
 const DEFAULT_OCR_FALLBACK_LOW_CONFIDENCE = 0.38;
 const DEFAULT_OCR_FALLBACK_LOW_LINE_SCORE = 0.4;
-const CANDIDATE_CONFIDENCE_WEIGHT = 0.6;
-const OCR_CONFIDENCE_WEIGHT = 0.4;
+const DEFAULT_RECOGNITION_CANDIDATE_WEIGHT = 0.75;
+const DEFAULT_OCR_CALIBRATION_CONFIDENCE_WEIGHT = 0.45;
 const SUPPORTED_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const POKEMON_SPECIES_ENDPOINT = 'https://pokeapi.co/api/v2/pokemon-species?limit=2000';
+const POKEMON_LEXICON_REQUEST_TIMEOUT_MS = 1500;
+const POKEMON_LEXICON_MIN_MATCH_SCORE = 0.74;
+const GITHUB_SET_BASE_URL =
+  'https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/master/cards/en';
+const GITHUB_SET_REQUEST_TIMEOUT_MS = 2500;
+const COLLECTOR_TOTAL_TO_SET_FILE: Record<number, string> = {
+  102: 'base1',
+};
+const POKEMON_NAME_FALLBACK = [
+  'pikachu',
+  'charizard',
+  'blastoise',
+  'venusaur',
+  'mew',
+  'mewtwo',
+  'eevee',
+  'snorlax',
+  'lucario',
+  'gengar',
+  'dragonite',
+  'rapidash',
+];
+
+type TesseractWorkerInstance = Awaited<ReturnType<typeof createWorker>>;
+type TesseractRecognizeOptions = {
+  rectangle?: OcrRectangle;
+};
+const tesseractWorkerCache = new Map<string, Promise<TesseractWorkerInstance>>();
+const tesseractWorkerQueue = new Map<string, Promise<void>>();
+
+function getTesseractWorker(lang: string): Promise<TesseractWorkerInstance> {
+  const cached = tesseractWorkerCache.get(lang);
+  if (cached) return cached;
+  const created = createWorker(lang);
+  tesseractWorkerCache.set(lang, created);
+  return created;
+}
+
+async function invalidateTesseractWorker(lang: string): Promise<void> {
+  const cached = tesseractWorkerCache.get(lang);
+  tesseractWorkerCache.delete(lang);
+  if (!cached) return;
+  try {
+    const worker = await cached;
+    await worker.terminate();
+  } catch (error) {
+    return;
+  }
+}
+
+async function runTesseractJob(
+  lang: string,
+  job: (worker: TesseractWorkerInstance) => Promise<RecognizeResult>,
+): Promise<RecognizeResult> {
+  const prev = tesseractWorkerQueue.get(lang) ?? Promise.resolve();
+  let release = () => {};
+  const next = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  tesseractWorkerQueue.set(lang, prev.then(() => next));
+
+  await prev;
+  try {
+    const worker = await getTesseractWorker(lang);
+    return await job(worker);
+  } catch (error) {
+    await invalidateTesseractWorker(lang);
+    throw error;
+  } finally {
+    release();
+  }
+}
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -93,7 +167,10 @@ function clamp01(value: number): number {
 function scoreOcrQuality(ocr: OcrResult): { lineScore: number; calibratedConfidence: number } {
   const lineScore = bestLineScore(extractCandidateLinesFromOcr(ocr));
   const normalizedLineScore = clamp01(lineScore);
-  const calibratedConfidence = clamp01(ocr.confidence * 0.7 + normalizedLineScore * 0.3);
+  const calibratedConfidence = clamp01(
+    ocr.confidence * OCR_CALIBRATION_CONFIDENCE_WEIGHT +
+      normalizedLineScore * OCR_CALIBRATION_LINE_WEIGHT,
+  );
   return { lineScore, calibratedConfidence };
 }
 
@@ -105,15 +182,74 @@ function computeRecognitionConfidence(
     return clamp01(ocrCalibratedConfidence);
   }
   return clamp01(
-    bestCandidateConfidence * CANDIDATE_CONFIDENCE_WEIGHT +
-      ocrCalibratedConfidence * OCR_CONFIDENCE_WEIGHT,
+    bestCandidateConfidence * RECOGNITION_CANDIDATE_WEIGHT +
+      ocrCalibratedConfidence * RECOGNITION_OCR_WEIGHT,
   );
+}
+
+function calibrateRecognitionConfidence(
+  rawConfidence: number,
+  bestCandidate: CandidateCard | undefined,
+  normalizedLineScore: number,
+  candidateLineCount: number,
+  hasNameSignal: boolean,
+): number {
+  let adjusted = clamp01(rawConfidence);
+  const hasIdentity = Boolean(bestCandidate?.identityId);
+
+  if (!bestCandidate) {
+    adjusted *= 0.8;
+  }
+
+  if (!hasIdentity) {
+    const cap = normalizedLineScore >= 0.65 ? 0.55 : 0.45;
+    adjusted = Math.min(adjusted, cap);
+  }
+
+  if (!hasIdentity && !hasNameSignal) {
+    adjusted = Math.min(adjusted, 0.34);
+  }
+
+  if (candidateLineCount === 0) {
+    adjusted = Math.min(adjusted, 0.3);
+  }
+
+  if (hasIdentity && normalizedLineScore >= 0.55) {
+    adjusted = clamp01(adjusted + 0.08);
+  }
+
+  if (!hasIdentity && hasNameSignal) {
+    adjusted = clamp01(adjusted + 0.04);
+  }
+
+  return adjusted;
 }
 
 function parseConfidenceThreshold(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return clamp01(parsed);
+}
+
+function getLowConfidenceThreshold(): number {
+  return parseConfidenceThreshold(
+    process.env.RECOGNIZE_LOW_CONFIDENCE_THRESHOLD,
+    DEFAULT_LOW_CONFIDENCE_THRESHOLD,
+  );
+}
+
+function getRecognitionCandidateWeight(): number {
+  return parseConfidenceThreshold(
+    process.env.RECOGNIZE_CANDIDATE_WEIGHT,
+    DEFAULT_RECOGNITION_CANDIDATE_WEIGHT,
+  );
+}
+
+function getOcrCalibrationConfidenceWeight(): number {
+  return parseConfidenceThreshold(
+    process.env.OCR_CALIBRATION_CONFIDENCE_WEIGHT,
+    DEFAULT_OCR_CALIBRATION_CONFIDENCE_WEIGHT,
+  );
 }
 
 function getPreprocessProfile(): OcrPreprocessProfile {
@@ -130,7 +266,7 @@ function getNameBandMode(): OcrNameBandMode {
 
 function getNameBandMaxRects(): number {
   const parsed = Number(process.env.OCR_NAME_BAND_MAX_RECTS);
-  if (!Number.isFinite(parsed) || parsed < 1) return 2;
+  if (!Number.isFinite(parsed) || parsed < 1) return 4;
   return Math.max(1, Math.min(6, Math.floor(parsed)));
 }
 
@@ -158,6 +294,11 @@ const OCR_PREPROCESS_PROFILE = getPreprocessProfile();
 const OCR_NAME_BAND_MODE = getNameBandMode();
 const OCR_NAME_BAND_MAX_RECTS = getNameBandMaxRects();
 const OCR_ENGINE_POLICY = getEnginePolicy();
+const LOW_CONFIDENCE_THRESHOLD = getLowConfidenceThreshold();
+const RECOGNITION_CANDIDATE_WEIGHT = getRecognitionCandidateWeight();
+const RECOGNITION_OCR_WEIGHT = 1 - RECOGNITION_CANDIDATE_WEIGHT;
+const OCR_CALIBRATION_CONFIDENCE_WEIGHT = getOcrCalibrationConfidenceWeight();
+const OCR_CALIBRATION_LINE_WEIGHT = 1 - OCR_CALIBRATION_CONFIDENCE_WEIGHT;
 const OCR_FALLBACK_LOW_CONFIDENCE = getFallbackLowConfidence();
 const OCR_FALLBACK_LOW_LINE_SCORE = getFallbackLowLineScore();
 const MAX_IMAGE_BYTES = parsePositiveInt(process.env.API_MAX_IMAGE_BYTES, DEFAULT_MAX_IMAGE_BYTES);
@@ -286,6 +427,244 @@ type OcrNameBandSpec = {
   heightRatio: number;
 };
 
+let pokemonNameLexiconPromise: Promise<string[]> | null = null;
+const githubSetCardsCache = new Map<string, Promise<{ id: string; name: string; number?: string }[]>>();
+
+function toDisplayPokemonName(name: string): string {
+  return name
+    .split('-')
+    .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
+    .join(' ');
+}
+
+function getFallbackPokemonLexicon(): string[] {
+  return POKEMON_NAME_FALLBACK.map((name) => toDisplayPokemonName(name));
+}
+
+async function loadPokemonNameLexicon(): Promise<string[]> {
+  const abortController = new AbortController();
+  const timeout = setTimeout(() => abortController.abort(), POKEMON_LEXICON_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(POKEMON_SPECIES_ENDPOINT, {
+      headers: { Accept: 'application/json' },
+      signal: abortController.signal,
+    });
+    if (!response.ok) return getFallbackPokemonLexicon();
+
+    const payload = (await response.json()) as unknown;
+    if (!payload || typeof payload !== 'object') return getFallbackPokemonLexicon();
+    const record = payload as Record<string, unknown>;
+    const results = Array.isArray(record.results) ? record.results : [];
+    const names = results
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object') return null;
+        const name = (entry as Record<string, unknown>).name;
+        return typeof name === 'string' ? name : null;
+      })
+      .filter((name): name is string => Boolean(name))
+      .map((name) => toDisplayPokemonName(name));
+
+    if (names.length === 0) return getFallbackPokemonLexicon();
+    return Array.from(new Set(names));
+  } catch (error) {
+    return getFallbackPokemonLexicon();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function getPokemonNameLexicon(): Promise<string[]> {
+  if (!pokemonNameLexiconPromise) {
+    pokemonNameLexiconPromise = loadPokemonNameLexicon();
+  }
+  return pokemonNameLexiconPromise;
+}
+
+async function loadGitHubSetCards(setFile: string): Promise<{ id: string; name: string; number?: string }[]> {
+  const abortController = new AbortController();
+  const timeout = setTimeout(() => abortController.abort(), GITHUB_SET_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${GITHUB_SET_BASE_URL}/${setFile}.json`, {
+      headers: { Accept: 'application/json' },
+      signal: abortController.signal,
+    });
+    if (!response.ok) return [];
+    const payload = (await response.json()) as unknown;
+    if (!Array.isArray(payload)) return [];
+    const cards: { id: string; name: string; number?: string }[] = [];
+    for (const entry of payload) {
+      if (!entry || typeof entry !== 'object') continue;
+      const record = entry as Record<string, unknown>;
+      const id = typeof record.id === 'string' ? record.id : null;
+      const name = typeof record.name === 'string' ? record.name : null;
+      const number = typeof record.number === 'string' ? record.number : undefined;
+      if (!id || !name) continue;
+      cards.push({ id, name, number });
+    }
+    return cards;
+  } catch (error) {
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function getGitHubSetCards(setFile: string): Promise<{ id: string; name: string; number?: string }[]> {
+  const cached = githubSetCardsCache.get(setFile);
+  if (cached) return cached;
+  const promise = loadGitHubSetCards(setFile);
+  githubSetCardsCache.set(setFile, promise);
+  return promise;
+}
+
+function prioritizeCandidateLines(baseLines: string[], preferredLines: string[]): string[] {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const line of [...preferredLines, ...baseLines]) {
+    const normalized = normalizeText(line);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    merged.push(normalized);
+  }
+  return merged;
+}
+
+function applyPokemonLexiconToLines(
+  lines: string[],
+  lexicon: string[],
+): { lines: string[]; matchedCount: number } {
+  const suggestions = lines
+    .slice(0, 8)
+    .map((line) => {
+      let bestName: string | null = null;
+      let bestScore = 0;
+      for (const name of lexicon) {
+        const score = similarityScore(line, name, 'EN');
+        if (score > bestScore) {
+          bestScore = score;
+          bestName = name;
+        }
+      }
+      if (!bestName || bestScore < POKEMON_LEXICON_MIN_MATCH_SCORE) return null;
+      return { name: bestName, score: bestScore };
+    })
+    .filter((entry): entry is { name: string; score: number } => Boolean(entry))
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => entry.name);
+
+  return {
+    lines: prioritizeCandidateLines(lines, suggestions),
+    matchedCount: suggestions.length,
+  };
+}
+
+type CollectorHint = { collectorNumber: string; collectorTotal?: number };
+
+function extractCollectorHints(lines: string[]): CollectorHint[] {
+  const hints: CollectorHint[] = [];
+  const seen = new Set<string>();
+  const pattern = /(\d{1,3})\s*\/\s*(\d{2,3})/g;
+  for (const line of lines) {
+    for (const match of line.matchAll(pattern)) {
+      const collectorNumber = String(Number(match[1]));
+      const collectorTotal = Number(match[2]);
+      const key = `${collectorNumber}/${collectorTotal}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      hints.push({ collectorNumber, collectorTotal });
+    }
+  }
+  return hints;
+}
+
+async function buildCandidatesFromCollectorHints(
+  hints: CollectorHint[],
+  lines: string[],
+  language: Language,
+  cardService: CardService,
+): Promise<CandidateCard[]> {
+  if (hints.length === 0) return [];
+  const scoredById = new Map<string, CandidateCard>();
+  const lineQueries = lines.slice(0, 4);
+  for (const hint of hints) {
+    const matches = await cardService.searchCards({
+      language,
+      collectorNumber: hint.collectorNumber,
+      limit: 50,
+    });
+    for (const card of matches) {
+      if (
+        typeof hint.collectorTotal === 'number' &&
+        Number.isFinite(hint.collectorTotal) &&
+        typeof card.collectorTotal === 'number' &&
+        card.collectorTotal !== hint.collectorTotal
+      ) {
+        continue;
+      }
+      const bestLineScore =
+        lineQueries.length > 0
+          ? Math.max(...lineQueries.map((line) => similarityScore(line, card.nameNormalized, language)))
+          : 0;
+      const totalBonus =
+        typeof hint.collectorTotal === 'number' &&
+        Number.isFinite(hint.collectorTotal) &&
+        typeof card.collectorTotal === 'number' &&
+        card.collectorTotal === hint.collectorTotal
+          ? 0.2
+          : 0;
+      const confidence = Math.min(0.96, Math.max(0.45, bestLineScore * 0.7 + totalBonus + 0.25));
+      const candidate: CandidateCard = {
+        cardId: card.id,
+        identityId: card.id,
+        name: card.name,
+        setCode: card.setCode,
+        number: card.collectorNumber,
+        language,
+        variant: card.variant,
+        confidence,
+        imageUrl: card.imageUrl ?? undefined,
+      };
+      const existing = scoredById.get(card.id);
+      if (!existing || candidate.confidence > existing.confidence) {
+        scoredById.set(card.id, candidate);
+      }
+    }
+  }
+
+  return Array.from(scoredById.values()).sort((a, b) => b.confidence - a.confidence);
+}
+
+async function buildCandidatesFromGitHubCollectorHints(
+  hints: CollectorHint[],
+  language: Language,
+): Promise<CandidateCard[]> {
+  if (language !== 'EN') return [];
+  const candidates: CandidateCard[] = [];
+  for (const hint of hints) {
+    if (typeof hint.collectorTotal !== 'number' || !Number.isFinite(hint.collectorTotal)) continue;
+    const setFile = COLLECTOR_TOTAL_TO_SET_FILE[hint.collectorTotal];
+    if (!setFile) continue;
+    const cards = await getGitHubSetCards(setFile);
+    const match = cards.find((card) => {
+      if (!card.number) return false;
+      const normalizedCardNumber = String(Number(card.number));
+      return normalizedCardNumber === hint.collectorNumber;
+    });
+    if (!match) continue;
+    candidates.push({
+      cardId: match.id,
+      name: match.name,
+      setCode: setFile,
+      number: hint.collectorNumber,
+      language,
+      confidence: 0.88,
+      imageUrl: `https://images.pokemontcg.io/${setFile}/${hint.collectorNumber}_hires.png`,
+    });
+  }
+
+  return candidates;
+}
+
 function decodeBase64Image(data: string): { buffer: Buffer; mime?: string } {
   const dataUrlMatch = data.match(/^data:(.+);base64,(.*)$/);
   const base64 = dataUrlMatch ? dataUrlMatch[2] : data;
@@ -299,6 +678,14 @@ function decodeBase64Image(data: string): { buffer: Buffer; mime?: string } {
     throw new BadRequestException('imageBase64 is too large');
   }
   return { buffer, mime };
+}
+
+async function normalizeImageBuffer(buffer: Buffer): Promise<Buffer> {
+  try {
+    return await sharp(buffer).rotate().png({ compressionLevel: 9 }).toBuffer();
+  } catch (error) {
+    throw new BadRequestException('imageBase64 contains invalid image data');
+  }
 }
 
 async function preprocessForOcr(buffer: Buffer): Promise<Buffer> {
@@ -318,6 +705,26 @@ async function preprocessForOcr(buffer: Buffer): Promise<Buffer> {
       .median(1)
       .sharpen()
       .threshold(threshold)
+      .toBuffer();
+  } catch (error) {
+    return buffer;
+  }
+}
+
+async function downscaleForOcr(buffer: Buffer, maxEdge = 960): Promise<Buffer> {
+  try {
+    const metadata = await sharp(buffer).metadata();
+    const width = metadata.width ?? 0;
+    const height = metadata.height ?? 0;
+    const longest = Math.max(width, height);
+    if (!longest || longest <= maxEdge) return buffer;
+    return await sharp(buffer)
+      .resize({
+        width: width >= height ? maxEdge : undefined,
+        height: height > width ? maxEdge : undefined,
+        fit: 'inside',
+        kernel: sharp.kernel.lanczos3,
+      })
       .toBuffer();
   } catch (error) {
     return buffer;
@@ -729,13 +1136,18 @@ async function runOcr(
   const lang = OCR_LANGUAGE_MAP[language] ?? OCR_LANGUAGE_MAP.EN;
   const runTesseract = async (): Promise<OcrResult> => {
     let result: RecognizeResult;
+    const options: TesseractRecognizeOptions | undefined = rectangle ? { rectangle } : undefined;
     try {
-      const options = rectangle
-        ? ({ rectangle } as unknown as Parameters<typeof Tesseract.recognize>[2])
-        : undefined;
-      result = await Tesseract.recognize(buffer, lang, options);
+      result = await runTesseractJob(lang, async (worker) => worker.recognize(buffer, options));
     } catch (error) {
-      throw new ServiceUnavailableException('ocr request failed');
+      try {
+        const fallbackOptions = options
+          ? ({ rectangle: options.rectangle } as unknown as Parameters<typeof Tesseract.recognize>[2])
+          : undefined;
+        result = await Tesseract.recognize(buffer, lang, fallbackOptions);
+      } catch (fallbackError) {
+        throw new ServiceUnavailableException('ocr request failed');
+      }
     }
 
     const rawText = typeof result.data.text === 'string' ? result.data.text : '';
@@ -786,8 +1198,15 @@ type PokemonTcgCard = {
 };
 
 async function fetchPokemonTcgCandidates(query: string, topK: number, language: Language) {
+  const normalizedQuery = normalizeText(query);
+  const tokens = normalizedQuery
+    .split(' ')
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+  const searchQuery = tokens.length > 0 ? tokens.join(' ') : normalizedQuery;
+
   const url = new URL('https://api.pokemontcg.io/v2/cards');
-  url.searchParams.set('q', `name:"${query}"`);
+  url.searchParams.set('q', `name:${searchQuery}`);
   url.searchParams.set('pageSize', String(topK));
 
   let response: Response;
@@ -825,13 +1244,15 @@ async function fetchPokemonTcgCandidates(query: string, topK: number, language: 
         : null;
     const imageUrl = images && typeof images.small === 'string' ? images.small : null;
     if (!id || !name) continue;
+    const nameSimilarity = similarityScore(query, name, language);
+    const candidateConfidence = Math.min(0.92, Math.max(0.35, 0.45 + nameSimilarity * 0.5));
     candidates.push({
       cardId: id,
       name,
       setCode: setCode ?? undefined,
       number: number ?? undefined,
       language,
-      confidence: 0.6,
+      confidence: candidateConfidence,
       imageUrl: imageUrl ?? undefined,
     });
     cards.push({
@@ -965,7 +1386,8 @@ export class RecognizeController {
       throw new BadRequestException('imageBase64 is required');
     }
     const startedAt = Date.now();
-    const { buffer, mime } = decodeBase64Image(body.imageBase64);
+    const { buffer: decodedBuffer, mime } = decodeBase64Image(body.imageBase64);
+    const buffer = await normalizeImageBuffer(decodedBuffer);
     const hint = body.hint ?? {};
     const language = hint.language ?? 'EN';
     const allowLanguageFallback = !hint.language;
@@ -980,9 +1402,26 @@ export class RecognizeController {
         : imageSize
           ? await autoCropCard(buffer, imageSize)
           : { buffer, size: null, method: 'none' };
-    const ocrBuffer = await preprocessForOcr(cropResult.buffer);
-    const ocrSize = cropResult.size ?? imageSize;
-    const ocr = await runOcr(ocrBuffer, language, undefined, cropResult.buffer);
+    const ocrSourceBuffer = await downscaleForOcr(cropResult.buffer);
+    const ocrBuffer = await preprocessForOcr(ocrSourceBuffer);
+    const OCR_ORIGINAL_RECHECK_CONFIDENCE = 0.55;
+    const OCR_ORIGINAL_RECHECK_LINE_SCORE = 0.4;
+    const runLanguageOcr = async (
+      targetLanguage: Language,
+      rectangle?: OcrRectangle,
+    ): Promise<OcrResult> => {
+      const preprocessed = await runOcr(ocrBuffer, targetLanguage, rectangle, ocrSourceBuffer);
+      const preprocessedQuality = scoreOcrQuality(preprocessed);
+      const shouldRecheckWithOriginal =
+        preprocessedQuality.calibratedConfidence < OCR_ORIGINAL_RECHECK_CONFIDENCE ||
+        preprocessedQuality.lineScore < OCR_ORIGINAL_RECHECK_LINE_SCORE;
+      if (!shouldRecheckWithOriginal) return preprocessed;
+
+      const original = await runOcr(ocrSourceBuffer, targetLanguage, rectangle, ocrSourceBuffer);
+      return selectBestOcr([preprocessed, original]) ?? preprocessed;
+    };
+    const ocrSize = (await getImageSizeAsync(ocrSourceBuffer)) ?? cropResult.size ?? imageSize;
+    const ocr = await runLanguageOcr(language);
     const ocrQuality = scoreOcrQuality(ocr);
     const shouldRunNameBand =
       OCR_NAME_BAND_MODE === 'always' ||
@@ -993,13 +1432,24 @@ export class RecognizeController {
         : [];
     const nameBandOcrs = nameBandRects.length
       ? await Promise.all(
-          nameBandRects.map((rect) => runOcr(ocrBuffer, language, rect, cropResult.buffer)),
+          nameBandRects.map((rect) => runLanguageOcr(language, rect)),
         )
       : [];
     const ocrNameBand = selectBestOcr(nameBandOcrs);
-    const ocrResults = [ocrNameBand ?? ocr].filter(Boolean) as OcrResult[];
-    let candidateLines = extractCandidateLines(ocrResults);
-    const primaryOcr = ocrNameBand ?? ocr;
+    const ocrResults = [ocr, ...nameBandOcrs].filter(Boolean) as OcrResult[];
+    const collectorSourceLines = Array.from(
+      new Set(
+        ocrResults
+          .flatMap((entry) => [...entry.lines, ...entry.rawLines])
+          .map((line) => normalizeText(line))
+          .filter(Boolean),
+      ),
+    );
+    const baseCandidateLines = extractCandidateLines(ocrResults);
+    const preferredBandLines = nameBandOcrs.flatMap((entry) => extractCandidateLinesFromOcr(entry));
+    let candidateLines = prioritizeCandidateLines(baseCandidateLines, preferredBandLines);
+    let hasPokemonLexiconSignal = false;
+    const primaryOcr = ocrNameBand ?? selectBestOcr(ocrResults) ?? ocr;
     const primaryOcrQuality = scoreOcrQuality(primaryOcr);
     let selectedLanguage = language;
 
@@ -1010,18 +1460,17 @@ export class RecognizeController {
         enScore < OCR_FALLBACK_LOW_LINE_SCORE ||
         candidateLines.length === 0;
       if (shouldTryKorean) {
-        const ocrKo = await runOcr(ocrBuffer, 'KO', undefined, cropResult.buffer);
+        const ocrKo = await runLanguageOcr('KO');
         const koNameBandRects =
           ocrSize && shouldRunNameBand
             ? buildNameBandRects(ocrSize).slice(0, OCR_NAME_BAND_MAX_RECTS)
             : [];
         const koNameBandOcrs = koNameBandRects.length
           ? await Promise.all(
-              koNameBandRects.map((rect) => runOcr(ocrBuffer, 'KO', rect, cropResult.buffer)),
+              koNameBandRects.map((rect) => runLanguageOcr('KO', rect)),
             )
           : [];
-        const ocrKoNameBand = selectBestOcr(koNameBandOcrs);
-        const koResults = [ocrKoNameBand ?? ocrKo].filter(Boolean) as OcrResult[];
+        const koResults = [ocrKo, ...koNameBandOcrs].filter(Boolean) as OcrResult[];
         const koCandidateLines = extractCandidateLines(koResults);
         const koScore = bestLineScore(koCandidateLines);
         const koHasHangul = koCandidateLines.some((line) => hasHangul(line));
@@ -1037,18 +1486,17 @@ export class RecognizeController {
           enScore < OCR_FALLBACK_LOW_LINE_SCORE ||
           candidateLines.length === 0);
       if (shouldTryJapanese) {
-        const ocrJa = await runOcr(ocrBuffer, 'JA', undefined, cropResult.buffer);
+        const ocrJa = await runLanguageOcr('JA');
         const jaNameBandRects =
           ocrSize && shouldRunNameBand
             ? buildNameBandRects(ocrSize).slice(0, OCR_NAME_BAND_MAX_RECTS)
             : [];
         const jaNameBandOcrs = jaNameBandRects.length
           ? await Promise.all(
-              jaNameBandRects.map((rect) => runOcr(ocrBuffer, 'JA', rect, cropResult.buffer)),
+              jaNameBandRects.map((rect) => runLanguageOcr('JA', rect)),
             )
           : [];
-        const ocrJaNameBand = selectBestOcr(jaNameBandOcrs);
-        const jaResults = [ocrJaNameBand ?? ocrJa].filter(Boolean) as OcrResult[];
+        const jaResults = [ocrJa, ...jaNameBandOcrs].filter(Boolean) as OcrResult[];
         const jaCandidateLines = extractCandidateLines(jaResults);
         const jaScore = bestLineScore(jaCandidateLines);
         if (jaCandidateLines.length > 0 && jaScore > enScore + 0.03) {
@@ -1058,8 +1506,29 @@ export class RecognizeController {
       }
     }
 
-    let candidates: CandidateCard[] = [];
     if (selectedLanguage === 'EN' && candidateLines.length > 0) {
+      const pokemonLexicon = await getPokemonNameLexicon();
+      const lexiconResult = applyPokemonLexiconToLines(candidateLines, pokemonLexicon);
+      candidateLines = lexiconResult.lines;
+      hasPokemonLexiconSignal = lexiconResult.matchedCount > 0;
+    }
+
+    const collectorHints = extractCollectorHints(collectorSourceLines);
+
+    let candidates: CandidateCard[] = [];
+    if (selectedLanguage === 'EN' && collectorHints.length > 0) {
+      candidates = await buildCandidatesFromCollectorHints(
+        collectorHints,
+        collectorSourceLines,
+        selectedLanguage,
+        this.cardService,
+      );
+      if (candidates.length === 0) {
+        candidates = await buildCandidatesFromGitHubCollectorHints(collectorHints, selectedLanguage);
+      }
+    }
+
+    if (selectedLanguage === 'EN' && candidateLines.length > 0 && candidates.length === 0) {
       const queries = candidateLines.slice(0, 3);
       for (const query of queries) {
         try {
@@ -1109,12 +1578,31 @@ export class RecognizeController {
       candidates = mergeCandidates(postProcessed, candidates);
     }
 
+    const hasStrongSignal =
+      hasPokemonLexiconSignal ||
+      collectorHints.length > 0 ||
+      candidates.some((candidate) => Boolean(candidate.identityId));
+    if (!hasStrongSignal) {
+      candidates = candidates.map((candidate, index) => ({
+        ...candidate,
+        confidence: Math.min(candidate.confidence, Math.max(0.22, 0.34 - index * 0.02)),
+      }));
+    }
+
     const trimmedCandidates = candidates.slice(0, DEFAULT_TOP_K);
 
     const best = trimmedCandidates[0];
-    const recognitionConfidence = computeRecognitionConfidence(
+    const normalizedLineScore = clamp01(primaryOcrQuality.lineScore);
+    const rawRecognitionConfidence = computeRecognitionConfidence(
       best?.confidence,
       primaryOcrQuality.calibratedConfidence,
+    );
+    const recognitionConfidence = calibrateRecognitionConfidence(
+      rawRecognitionConfidence,
+      best,
+      normalizedLineScore,
+      candidateLines.length,
+      hasPokemonLexiconSignal,
     );
     const isLowConfidence = recognitionConfidence < LOW_CONFIDENCE_THRESHOLD;
     const elapsedMs = Date.now() - startedAt;
@@ -1158,6 +1646,8 @@ export class RecognizeController {
         },
         logId: logEntry.id,
         confidence: recognitionConfidence,
+        rawConfidence: rawRecognitionConfidence,
+        normalizedLineScore,
         isLowConfidence,
         steps: ['decode', 'size-check', 'crop', 'ocr', 'candidate-search'],
         runtimeConfig: {
@@ -1165,6 +1655,11 @@ export class RecognizeController {
           nameBandMode: OCR_NAME_BAND_MODE,
           nameBandMaxRects: OCR_NAME_BAND_MAX_RECTS,
           enginePolicy: OCR_ENGINE_POLICY,
+          lowConfidenceThreshold: LOW_CONFIDENCE_THRESHOLD,
+          recognizeCandidateWeight: RECOGNITION_CANDIDATE_WEIGHT,
+          recognizeOcrWeight: RECOGNITION_OCR_WEIGHT,
+          ocrCalibrationConfidenceWeight: OCR_CALIBRATION_CONFIDENCE_WEIGHT,
+          ocrCalibrationLineWeight: OCR_CALIBRATION_LINE_WEIGHT,
           fallbackLowConfidence: OCR_FALLBACK_LOW_CONFIDENCE,
           fallbackLowLineScore: OCR_FALLBACK_LOW_LINE_SCORE,
         },

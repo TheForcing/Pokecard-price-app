@@ -28,3 +28,26 @@ export async function fetchWithTimeout(input: string, init?: RequestInit): Promi
     clearTimeout(timeout);
   }
 }
+
+export async function fetchWithCustomTimeout(
+  input: string,
+  timeoutMs: number,
+  init?: RequestInit,
+): Promise<Response> {
+  const safeTimeout = Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.floor(timeoutMs) : resolveTimeoutMs();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), safeTimeout);
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`request timed out after ${safeTimeout}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}

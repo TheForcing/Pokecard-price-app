@@ -2,7 +2,9 @@
 
 import type { CandidateCard, Language, Market, RecognizeResponse } from '@pokecard/shared';
 import { useMemo, useState } from 'react';
-import { fetchWithTimeout } from './fetch-with-timeout';
+import { fetchWithCustomTimeout } from './fetch-with-timeout';
+
+const RECOGNIZE_TIMEOUT_MS = 90000;
 
 type UseRecognizeParams = {
   apiBase: string;
@@ -30,7 +32,7 @@ export function useRecognize({ apiBase, lowConfidenceThreshold = 0.5 }: UseRecog
     setError(null);
     setShowAllCandidates(false);
     try {
-      const res = await fetchWithTimeout(`${apiBase}/recognize`, {
+      const res = await fetchWithCustomTimeout(`${apiBase}/recognize`, RECOGNIZE_TIMEOUT_MS, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: preview, hint: { market, language } }),

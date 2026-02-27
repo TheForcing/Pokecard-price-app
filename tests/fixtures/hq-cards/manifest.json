@@ -1,0 +1,505 @@
+{
+  "count": 50,
+  "items": [
+    {
+      "fileName": "01-alakazam-base1-1.jpg",
+      "cardId": "base1-1",
+      "name": "Alakazam",
+      "sourceUrl": "https://images.pokemontcg.io/base1/1_hires.png",
+      "bytes": 574740,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "02-blastoise-base1-2.jpg",
+      "cardId": "base1-2",
+      "name": "Blastoise",
+      "sourceUrl": "https://images.pokemontcg.io/base1/2_hires.png",
+      "bytes": 650702,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "03-chansey-base1-3.jpg",
+      "cardId": "base1-3",
+      "name": "Chansey",
+      "sourceUrl": "https://images.pokemontcg.io/base1/3_hires.png",
+      "bytes": 590136,
+      "width": 1164,
+      "height": 1600,
+      "quality": 95
+    },
+    {
+      "fileName": "04-charizard-base1-4.jpg",
+      "cardId": "base1-4",
+      "name": "Charizard",
+      "sourceUrl": "https://images.pokemontcg.io/base1/4_hires.png",
+      "bytes": 550043,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "05-clefairy-base1-5.jpg",
+      "cardId": "base1-5",
+      "name": "Clefairy",
+      "sourceUrl": "https://images.pokemontcg.io/base1/5_hires.png",
+      "bytes": 617898,
+      "width": 1164,
+      "height": 1600,
+      "quality": 95
+    },
+    {
+      "fileName": "06-gyarados-base1-6.jpg",
+      "cardId": "base1-6",
+      "name": "Gyarados",
+      "sourceUrl": "https://images.pokemontcg.io/base1/6_hires.png",
+      "bytes": 599763,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "07-hitmonchan-base1-7.jpg",
+      "cardId": "base1-7",
+      "name": "Hitmonchan",
+      "sourceUrl": "https://images.pokemontcg.io/base1/7_hires.png",
+      "bytes": 598140,
+      "width": 1164,
+      "height": 1600,
+      "quality": 95
+    },
+    {
+      "fileName": "08-machamp-base1-8.jpg",
+      "cardId": "base1-8",
+      "name": "Machamp",
+      "sourceUrl": "https://images.pokemontcg.io/base1/8_hires.png",
+      "bytes": 559048,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "09-magneton-base1-9.jpg",
+      "cardId": "base1-9",
+      "name": "Magneton",
+      "sourceUrl": "https://images.pokemontcg.io/base1/9_hires.png",
+      "bytes": 549988,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "10-mewtwo-base1-10.jpg",
+      "cardId": "base1-10",
+      "name": "Mewtwo",
+      "sourceUrl": "https://images.pokemontcg.io/base1/10_hires.png",
+      "bytes": 625287,
+      "width": 1164,
+      "height": 1600,
+      "quality": 95
+    },
+    {
+      "fileName": "11-nidoking-base1-11.jpg",
+      "cardId": "base1-11",
+      "name": "Nidoking",
+      "sourceUrl": "https://images.pokemontcg.io/base1/11_hires.png",
+      "bytes": 574366,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "12-ninetales-base1-12.jpg",
+      "cardId": "base1-12",
+      "name": "Ninetales",
+      "sourceUrl": "https://images.pokemontcg.io/base1/12_hires.png",
+      "bytes": 531590,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "13-poliwrath-base1-13.jpg",
+      "cardId": "base1-13",
+      "name": "Poliwrath",
+      "sourceUrl": "https://images.pokemontcg.io/base1/13_hires.png",
+      "bytes": 575671,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "14-raichu-base1-14.jpg",
+      "cardId": "base1-14",
+      "name": "Raichu",
+      "sourceUrl": "https://images.pokemontcg.io/base1/14_hires.png",
+      "bytes": 531386,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "15-venusaur-base1-15.jpg",
+      "cardId": "base1-15",
+      "name": "Venusaur",
+      "sourceUrl": "https://images.pokemontcg.io/base1/15_hires.png",
+      "bytes": 532843,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "16-zapdos-base1-16.jpg",
+      "cardId": "base1-16",
+      "name": "Zapdos",
+      "sourceUrl": "https://images.pokemontcg.io/base1/16_hires.png",
+      "bytes": 628583,
+      "width": 1164,
+      "height": 1600,
+      "quality": 95
+    },
+    {
+      "fileName": "17-beedrill-base1-17.jpg",
+      "cardId": "base1-17",
+      "name": "Beedrill",
+      "sourceUrl": "https://images.pokemontcg.io/base1/17_hires.png",
+      "bytes": 601175,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "18-dragonair-base1-18.jpg",
+      "cardId": "base1-18",
+      "name": "Dragonair",
+      "sourceUrl": "https://images.pokemontcg.io/base1/18_hires.png",
+      "bytes": 562358,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "19-dugtrio-base1-19.jpg",
+      "cardId": "base1-19",
+      "name": "Dugtrio",
+      "sourceUrl": "https://images.pokemontcg.io/base1/19_hires.png",
+      "bytes": 633994,
+      "width": 1164,
+      "height": 1600,
+      "quality": 95
+    },
+    {
+      "fileName": "20-electabuzz-base1-20.jpg",
+      "cardId": "base1-20",
+      "name": "Electabuzz",
+      "sourceUrl": "https://images.pokemontcg.io/base1/20_hires.png",
+      "bytes": 549767,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "21-electrode-base1-21.jpg",
+      "cardId": "base1-21",
+      "name": "Electrode",
+      "sourceUrl": "https://images.pokemontcg.io/base1/21_hires.png",
+      "bytes": 533437,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "22-pidgeotto-base1-22.jpg",
+      "cardId": "base1-22",
+      "name": "Pidgeotto",
+      "sourceUrl": "https://images.pokemontcg.io/base1/22_hires.png",
+      "bytes": 632305,
+      "width": 1164,
+      "height": 1600,
+      "quality": 95
+    },
+    {
+      "fileName": "23-arcanine-base1-23.jpg",
+      "cardId": "base1-23",
+      "name": "Arcanine",
+      "sourceUrl": "https://images.pokemontcg.io/base1/23_hires.png",
+      "bytes": 561864,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "24-charmeleon-base1-24.jpg",
+      "cardId": "base1-24",
+      "name": "Charmeleon",
+      "sourceUrl": "https://images.pokemontcg.io/base1/24_hires.png",
+      "bytes": 536343,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "25-dewgong-base1-25.jpg",
+      "cardId": "base1-25",
+      "name": "Dewgong",
+      "sourceUrl": "https://images.pokemontcg.io/base1/25_hires.png",
+      "bytes": 561511,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "26-dratini-base1-26.jpg",
+      "cardId": "base1-26",
+      "name": "Dratini",
+      "sourceUrl": "https://images.pokemontcg.io/base1/26_hires.png",
+      "bytes": 583631,
+      "width": 1164,
+      "height": 1600,
+      "quality": 95
+    },
+    {
+      "fileName": "27-farfetch-d-base1-27.jpg",
+      "cardId": "base1-27",
+      "name": "Farfetch'd",
+      "sourceUrl": "https://images.pokemontcg.io/base1/27_hires.png",
+      "bytes": 642087,
+      "width": 1164,
+      "height": 1600,
+      "quality": 95
+    },
+    {
+      "fileName": "28-growlithe-base1-28.jpg",
+      "cardId": "base1-28",
+      "name": "Growlithe",
+      "sourceUrl": "https://images.pokemontcg.io/base1/28_hires.png",
+      "bytes": 517191,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "29-haunter-base1-29.jpg",
+      "cardId": "base1-29",
+      "name": "Haunter",
+      "sourceUrl": "https://images.pokemontcg.io/base1/29_hires.png",
+      "bytes": 522403,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "30-ivysaur-base1-30.jpg",
+      "cardId": "base1-30",
+      "name": "Ivysaur",
+      "sourceUrl": "https://images.pokemontcg.io/base1/30_hires.png",
+      "bytes": 547331,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "31-jynx-base1-31.jpg",
+      "cardId": "base1-31",
+      "name": "Jynx",
+      "sourceUrl": "https://images.pokemontcg.io/base1/31_hires.png",
+      "bytes": 579295,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "32-kadabra-base1-32.jpg",
+      "cardId": "base1-32",
+      "name": "Kadabra",
+      "sourceUrl": "https://images.pokemontcg.io/base1/32_hires.png",
+      "bytes": 555058,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "33-kakuna-base1-33.jpg",
+      "cardId": "base1-33",
+      "name": "Kakuna",
+      "sourceUrl": "https://images.pokemontcg.io/base1/33_hires.png",
+      "bytes": 547610,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "34-machoke-base1-34.jpg",
+      "cardId": "base1-34",
+      "name": "Machoke",
+      "sourceUrl": "https://images.pokemontcg.io/base1/34_hires.png",
+      "bytes": 651091,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "35-magikarp-base1-35.jpg",
+      "cardId": "base1-35",
+      "name": "Magikarp",
+      "sourceUrl": "https://images.pokemontcg.io/base1/35_hires.png",
+      "bytes": 684967,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "36-magmar-base1-36.jpg",
+      "cardId": "base1-36",
+      "name": "Magmar",
+      "sourceUrl": "https://images.pokemontcg.io/base1/36_hires.png",
+      "bytes": 569423,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "37-nidorino-base1-37.jpg",
+      "cardId": "base1-37",
+      "name": "Nidorino",
+      "sourceUrl": "https://images.pokemontcg.io/base1/37_hires.png",
+      "bytes": 568537,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "38-poliwhirl-base1-38.jpg",
+      "cardId": "base1-38",
+      "name": "Poliwhirl",
+      "sourceUrl": "https://images.pokemontcg.io/base1/38_hires.png",
+      "bytes": 593597,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "39-porygon-base1-39.jpg",
+      "cardId": "base1-39",
+      "name": "Porygon",
+      "sourceUrl": "https://images.pokemontcg.io/base1/39_hires.png",
+      "bytes": 514652,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "40-raticate-base1-40.jpg",
+      "cardId": "base1-40",
+      "name": "Raticate",
+      "sourceUrl": "https://images.pokemontcg.io/base1/40_hires.png",
+      "bytes": 606534,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "41-seel-base1-41.jpg",
+      "cardId": "base1-41",
+      "name": "Seel",
+      "sourceUrl": "https://images.pokemontcg.io/base1/41_hires.png",
+      "bytes": 596499,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "42-wartortle-base1-42.jpg",
+      "cardId": "base1-42",
+      "name": "Wartortle",
+      "sourceUrl": "https://images.pokemontcg.io/base1/42_hires.png",
+      "bytes": 588781,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "43-abra-base1-43.jpg",
+      "cardId": "base1-43",
+      "name": "Abra",
+      "sourceUrl": "https://images.pokemontcg.io/base1/43_hires.png",
+      "bytes": 569243,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "44-bulbasaur-base1-44.jpg",
+      "cardId": "base1-44",
+      "name": "Bulbasaur",
+      "sourceUrl": "https://images.pokemontcg.io/base1/44_hires.png",
+      "bytes": 543258,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "45-caterpie-base1-45.jpg",
+      "cardId": "base1-45",
+      "name": "Caterpie",
+      "sourceUrl": "https://images.pokemontcg.io/base1/45_hires.png",
+      "bytes": 523844,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "46-charmander-base1-46.jpg",
+      "cardId": "base1-46",
+      "name": "Charmander",
+      "sourceUrl": "https://images.pokemontcg.io/base1/46_hires.png",
+      "bytes": 528153,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "47-diglett-base1-47.jpg",
+      "cardId": "base1-47",
+      "name": "Diglett",
+      "sourceUrl": "https://images.pokemontcg.io/base1/47_hires.png",
+      "bytes": 538780,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "48-doduo-base1-48.jpg",
+      "cardId": "base1-48",
+      "name": "Doduo",
+      "sourceUrl": "https://images.pokemontcg.io/base1/48_hires.png",
+      "bytes": 596296,
+      "width": 1164,
+      "height": 1600,
+      "quality": 95
+    },
+    {
+      "fileName": "49-drowzee-base1-49.jpg",
+      "cardId": "base1-49",
+      "name": "Drowzee",
+      "sourceUrl": "https://images.pokemontcg.io/base1/49_hires.png",
+      "bytes": 537244,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    },
+    {
+      "fileName": "50-gastly-base1-50.jpg",
+      "cardId": "base1-50",
+      "name": "Gastly",
+      "sourceUrl": "https://images.pokemontcg.io/base1/50_hires.png",
+      "bytes": 531405,
+      "width": 1164,
+      "height": 1600,
+      "quality": 92
+    }
+  ]
+}
