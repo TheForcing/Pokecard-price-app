@@ -52,6 +52,18 @@ describe('recognize text helpers', () => {
     expect(lines).not.toContain('HP 60');
   });
 
+  it('keeps non-Latin name lines as OCR candidates', () => {
+    const lines = extractCandidateLines([
+      makeOcr({
+        rawText: '피카츄 HP 60',
+        rawLines: ['HP 60', '피카츄', '번개쇼크'],
+        lines: ['HP 60', '피카츄', '번개쇼크'],
+        confidence: 0.7,
+      }),
+    ]);
+    expect(lines).toContain('피카츄');
+  });
+
   it('selects better OCR result by line quality then confidence', () => {
     const best = selectBestOcr([
       makeOcr({ lines: ['HP 60', 'Energy'], confidence: 0.95 }),

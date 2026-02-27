@@ -117,12 +117,47 @@ function isLikelyNameLine(value: string): boolean {
   return letters / total >= 0.4;
 }
 
-function hasAlphaToken(value: string, minLength: number): boolean {
+function isStatLine(value: string): boolean {
+  const normalized = normalizeForMatch(value);
+  if (!normalized) return false;
+  return /^hp\s*\d{1,4}$/i.test(normalized);
+}
+
+function isDescriptionLine(value: string): boolean {
+  const normalized = normalizeForMatch(value);
+  if (!normalized) return false;
+  const tokens = normalized.split(' ').filter(Boolean);
+  if (tokens.length < 6) return false;
+  const commonWords = new Set([
+    'the',
+    'this',
+    'that',
+    'with',
+    'from',
+    'into',
+    'when',
+    'your',
+    'it',
+    'its',
+    'can',
+    'is',
+    'are',
+    'of',
+    'to',
+    'in',
+    'for',
+    'on',
+  ]);
+  const commonCount = tokens.filter((token) => commonWords.has(token)).length;
+  return commonCount >= 3;
+}
+
+function hasLetterToken(value: string, minLength: number): boolean {
   const tokens = value
     .split(' ')
     .map((token) => token.trim())
     .filter(Boolean);
-  return tokens.some((token) => /[A-Za-z]/.test(token) && token.length >= minLength);
+  return tokens.some((token) => /\p{L}/u.test(token) && token.length >= minLength);
 }
 
 function scoreCandidateLine(value: string): number {
@@ -141,6 +176,8 @@ function scoreCandidateLine(value: string): number {
   score -= shortTokens * 0.05;
   score -= digits * 0.02;
   if (tokens.length >= 1 && tokens.length <= 4) score += 0.1;
+  if (digits === 0 && tokens.length >= 1 && tokens.length <= 3) score += 0.08;
+  if (tokens.length >= 7) score -= 0.25;
   if (trimmed.length > 30) score -= 0.1;
   if (/\b(hp|vstar|vmax|gx|ex|trainer|energy)\b/i.test(trimmed)) score -= 0.05;
   return score;
@@ -151,7 +188,11 @@ function rankCandidateLines(lines: string[]): string[] {
     .map((line) => ({ line, score: scoreCandidateLine(line) }))
     .filter(
       ({ line, score }) =>
-        hasLetter(line) && hasAlphaToken(line, 3) && (isLikelyNameLine(line) || score >= 0.35),
+        !isStatLine(line) &&
+        !isDescriptionLine(line) &&
+        hasLetter(line) &&
+        hasLetterToken(line, 2) &&
+        (isLikelyNameLine(line) || score >= 0.3),
     )
     .sort((a, b) => b.score - a.score);
   const seen = new Set<string>();
@@ -230,17 +271,21 @@ export function buildCandidatesFromLines(
 ): CandidateCard[] {
   const seen = new Set<string>();
   const candidates: CandidateCard[] = [];
+  let rank = 0;
   for (const line of lines) {
     const normalized = normalizeText(line);
     if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
+    const rankPenalty = Math.min(0.22, rank * 0.04);
+    const confidence = Math.min(0.9, Math.max(0.2, baseConfidence - rankPenalty));
     const cardId = `${language}:${normalized.replace(/\s+/g, '-').toLowerCase()}`;
     candidates.push({
       cardId,
       name: normalized,
-      confidence: Math.min(0.9, Math.max(0.2, baseConfidence)),
+      confidence,
       language,
     });
+    rank += 1;
   }
   return candidates;
 }
