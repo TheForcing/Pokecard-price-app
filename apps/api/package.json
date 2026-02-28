@@ -10,6 +10,8 @@
     "lint": "eslint \"src/**/*.ts\"",
     "test": "pnpm run test:fast",
     "test:fast": "vitest run tests/basic.test.ts tests/integration.test.ts tests/recognize-text.test.ts",
+    "ocr:smoke": "node scripts/run-ocr-smoke-tests.mjs",
+    "price:variant-check": "node scripts/verify-variant-price-separation.mjs",
     "test:integration": "node scripts/run-db-integration-tests.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prisma:generate": "prisma generate",

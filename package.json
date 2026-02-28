@@ -13,6 +13,8 @@
     "test": "pnpm run test:fast",
     "test:fast": "pnpm -C packages/shared test && pnpm -C apps/web test && pnpm -C apps/api test:fast",
     "test:integration": "pnpm -C apps/api test:integration",
+    "ocr:manual": "pnpm -C apps/api ocr:smoke",
+    "price:variant-check": "pnpm -C apps/api price:variant-check",
     "typecheck": "pnpm -r typecheck",
     "format": "prettier -w .",
     "docker:up": "docker compose -f infra/docker-compose.yml up -d",
