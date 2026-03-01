@@ -15,6 +15,7 @@
     "test:integration": "pnpm -C apps/api test:integration",
     "ocr:manual": "pnpm -C apps/api ocr:smoke",
     "price:variant-check": "pnpm -C apps/api price:variant-check",
+    "quality:variant-scan": "pnpm -C apps/api quality:variant-scan",
     "typecheck": "pnpm -r typecheck",
     "format": "prettier -w .",
     "docker:up": "docker compose -f infra/docker-compose.yml up -d",

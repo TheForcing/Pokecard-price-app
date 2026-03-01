@@ -39,7 +39,7 @@ export function ManualSearchPriceSection({
   const [manualQuery, setManualQuery] = useState('');
   const [manualSetCode, setManualSetCode] = useState('');
   const [manualNumber, setManualNumber] = useState('');
-  const [manualVariant, setManualVariant] = useState<CardVariant | ''>('');
+  const [manualVariant, setManualVariant] = useState<CardVariant | ''>('NORMAL');
 
   return (
     <>
@@ -47,6 +47,9 @@ export function ManualSearchPriceSection({
         <h2>Manual Search</h2>
         <p className="muted" style={{ marginTop: 6, fontSize: 12 }}>
           Use this when OCR is uncertain. Search by name + set/number + variant.
+        </p>
+        <p className="muted" style={{ marginTop: 4, fontSize: 12 }}>
+          Tip: same Pokemon name can have different prices per variant (Normal/Holo/Reverse Holo).
         </p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 10 }}>
           <label

@@ -130,6 +130,13 @@ jobs:
           RUN_DB_INTEGRATION_TESTS: 'true'
         run: pnpm -C apps/api test -- tests/db-integration.test.ts
 
+      - name: API variant separation guard (required)
+        env:
+          RUN_DB_INTEGRATION_TESTS: 'true'
+        run: >-
+          pnpm -C apps/api exec vitest run tests/db-integration.test.ts
+          -t "keeps same-name variants priced separately"
+
       - name: Web and shared tests
         run: pnpm -r --filter @pokecard/web --filter @pokecard/shared test
 

@@ -46,6 +46,9 @@ type ProviderMetricEntry = {
   results: Record<ProviderResult, number>;
 };
 
+type VariantMetricKind = 'getPriceCalls' | 'registerCalls' | 'providerFetches';
+type VariantMetricEntry = Record<VariantMetricKind, number>;
+
 type CircuitState = {
   failures: number;
   openedUntil: number;
@@ -105,6 +108,14 @@ function createProviderMetricEntry(): ProviderMetricEntry {
       retrying_after_http_error: 0,
       blocked_by_circuit: 0,
     },
+  };
+}
+
+function createVariantMetricEntry(): VariantMetricEntry {
+  return {
+    getPriceCalls: 0,
+    registerCalls: 0,
+    providerFetches: 0,
   };
 }
 
@@ -186,6 +197,20 @@ export class PriceService implements OnModuleDestroy {
     redis: createCacheMetricEntry(),
     memory: createCacheMetricEntry(),
   };
+  private readonly variantMetrics = new Map<string, VariantMetricEntry>();
+
+  private getVariantMetricEntry(variant: string): VariantMetricEntry {
+    const existing = this.variantMetrics.get(variant);
+    if (existing) return existing;
+    const created = createVariantMetricEntry();
+    this.variantMetrics.set(variant, created);
+    return created;
+  }
+
+  private trackVariantMetric(variant: string, kind: VariantMetricKind): void {
+    const entry = this.getVariantMetricEntry(variant);
+    entry[kind] += 1;
+  }
 
   private trackCacheMetric(payload: Record<string, unknown>): void {
     const cache = payload.cache;
@@ -293,6 +318,9 @@ export class PriceService implements OnModuleDestroy {
         memory: { ...this.cacheMetrics.memory },
       },
       providers: providerSummary,
+      variants: Array.from(this.variantMetrics.entries())
+        .map(([variant, metrics]) => ({ variant, ...metrics }))
+        .sort((a, b) => a.variant.localeCompare(b.variant)),
     };
   }
 
@@ -944,6 +972,7 @@ export class PriceService implements OnModuleDestroy {
     if (!card) {
       throw new NotFoundException('card not found');
     }
+    this.trackVariantMetric(card.variant, 'registerCalls');
 
     const externalId =
       payload.externalId?.trim() || `manual:${card.id}:${payload.source}:${payload.market}`;
@@ -1016,6 +1045,7 @@ export class PriceService implements OnModuleDestroy {
       await this.writeCache(cacheKey, stub);
       return stub;
     }
+    this.trackVariantMetric(card.variant, 'getPriceCalls');
 
     const map = await this.getOrCreateExternalMap(card, market);
     const query = map.externalId.startsWith('query:')
@@ -1025,10 +1055,12 @@ export class PriceService implements OnModuleDestroy {
     let response: PriceResponse;
     if (map.provider === ExternalProvider.TCGPLAYER && !map.externalId.startsWith('query:')) {
       const productId = Number(map.externalId);
+      this.trackVariantMetric(card.variant, 'providerFetches');
       response = Number.isFinite(productId)
         ? await this.fetchTcgplayerPriceByProductId(productId, query)
         : await this.fetchTcgplayerPrice(query);
     } else {
+      this.trackVariantMetric(card.variant, 'providerFetches');
       response = await this.fetchFromProvider(query, market);
     }
 

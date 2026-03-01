@@ -46,3 +46,8 @@ jobs:
 
       - name: API DB integration tests
         run: pnpm -C apps/api test -- tests/db-integration.test.ts
+
+      - name: API variant separation guard
+        run: >-
+          pnpm -C apps/api exec vitest run tests/db-integration.test.ts
+          -t "keeps same-name variants priced separately"
