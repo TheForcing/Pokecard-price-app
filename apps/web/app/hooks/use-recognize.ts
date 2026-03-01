@@ -4,7 +4,16 @@ import type { CandidateCard, Language, Market, RecognizeResponse } from '@pokeca
 import { useMemo, useState } from 'react';
 import { fetchWithCustomTimeout } from './fetch-with-timeout';
 
-const RECOGNIZE_TIMEOUT_MS = 90000;
+const DEFAULT_RECOGNIZE_TIMEOUT_MS = 240000;
+
+function getRecognizeTimeoutMs(): number {
+  const rawValue = process.env.NEXT_PUBLIC_RECOGNIZE_TIMEOUT_MS;
+  const parsed = Number(rawValue);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_RECOGNIZE_TIMEOUT_MS;
+  }
+  return Math.floor(parsed);
+}
 
 type UseRecognizeParams = {
   apiBase: string;
@@ -12,6 +21,7 @@ type UseRecognizeParams = {
 };
 
 export function useRecognize({ apiBase, lowConfidenceThreshold = 0.5 }: UseRecognizeParams) {
+  const recognizeTimeoutMs = getRecognizeTimeoutMs();
   const [recognizeRes, setRecognizeRes] = useState<RecognizeResponse | null>(null);
   const [selected, setSelected] = useState<CandidateCard | null>(null);
   const [lowConfidence, setLowConfidence] = useState(false);
@@ -32,7 +42,7 @@ export function useRecognize({ apiBase, lowConfidenceThreshold = 0.5 }: UseRecog
     setError(null);
     setShowAllCandidates(false);
     try {
-      const res = await fetchWithCustomTimeout(`${apiBase}/recognize`, RECOGNIZE_TIMEOUT_MS, {
+      const res = await fetchWithCustomTimeout(`${apiBase}/recognize`, recognizeTimeoutMs, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: preview, hint: { market, language } }),

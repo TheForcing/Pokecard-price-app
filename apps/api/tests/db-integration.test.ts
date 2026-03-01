@@ -168,6 +168,165 @@ describe.runIf(shouldRunDbIntegration)('API DB integration', () => {
     expect(snapshotsAfterSecond).toHaveLength(1);
   });
 
+  it('POST+GET /cards/:cardId/prices keeps same-name variants priced separately', async () => {
+    const normal = await prisma.cardIdentity.create({
+      data: {
+        name: 'Pikachu',
+        nameNormalized: 'pikachu',
+        language: 'EN',
+        setCode: 'variant-check',
+        setName: 'Variant Check Set',
+        collectorNumber: '1',
+        variant: 'NORMAL',
+      },
+    });
+
+    const holo = await prisma.cardIdentity.create({
+      data: {
+        name: 'Pikachu',
+        nameNormalized: 'pikachu',
+        language: 'EN',
+        setCode: 'variant-check',
+        setName: 'Variant Check Set',
+        collectorNumber: '1',
+        variant: 'HOLOFOIL',
+      },
+    });
+
+    const normalUpsert = await request(app.getHttpServer())
+      .post(`/cards/${normal.id}/prices`)
+      .send({
+        market: 'US',
+        currency: 'USD',
+        low: 10,
+        high: 20,
+        source: 'TCGPLAYER',
+      });
+    expect(normalUpsert.status).toBe(201);
+
+    const holoUpsert = await request(app.getHttpServer())
+      .post(`/cards/${holo.id}/prices`)
+      .send({
+        market: 'US',
+        currency: 'USD',
+        low: 80,
+        high: 120,
+        source: 'TCGPLAYER',
+      });
+    expect(holoUpsert.status).toBe(201);
+
+    const normalPrice = await request(app.getHttpServer())
+      .get(`/cards/${normal.id}/prices`)
+      .query({ market: 'US' });
+    expect(normalPrice.status).toBe(200);
+    expect(normalPrice.body.low).toBe(10);
+    expect(normalPrice.body.high).toBe(20);
+
+    const holoPrice = await request(app.getHttpServer())
+      .get(`/cards/${holo.id}/prices`)
+      .query({ market: 'US' });
+    expect(holoPrice.status).toBe(200);
+    expect(holoPrice.body.low).toBe(80);
+    expect(holoPrice.body.high).toBe(120);
+
+    expect(normalPrice.body.low).not.toBe(holoPrice.body.low);
+    expect(normalPrice.body.high).not.toBe(holoPrice.body.high);
+
+    const maps = await prisma.externalProductMap.findMany({
+      where: {
+        provider: ExternalProvider.TCGPLAYER,
+        market: Market.US,
+      },
+    });
+    expect(maps).toHaveLength(2);
+
+    const snapshots = await prisma.priceSnapshot.findMany({ where: { market: Market.US } });
+    expect(snapshots).toHaveLength(2);
+  });
+
+  it('regression: same name/set/number across 6 variants keeps search and prices isolated', async () => {
+    const variantCases = [
+      { variant: 'NORMAL', low: 10, high: 20 },
+      { variant: 'HOLOFOIL', low: 30, high: 40 },
+      { variant: 'REVERSE_HOLOFOIL', low: 50, high: 60 },
+      { variant: 'FULL_ART', low: 70, high: 80 },
+      { variant: 'ALT_ART', low: 90, high: 100 },
+      { variant: 'PROMO', low: 110, high: 120 },
+    ] as const;
+
+    const created = [] as Array<{ id: string; variant: (typeof variantCases)[number]['variant'] }>;
+    for (const entry of variantCases) {
+      const card = await prisma.cardIdentity.create({
+        data: {
+          name: 'CollisionMon',
+          nameNormalized: 'collisionmon',
+          language: 'EN',
+          setCode: 'collision-regression',
+          setName: 'Collision Regression Set',
+          collectorNumber: '25',
+          variant: entry.variant,
+        },
+      });
+      created.push({ id: card.id, variant: entry.variant });
+
+      const upsert = await request(app.getHttpServer())
+        .post(`/cards/${card.id}/prices`)
+        .send({
+          market: 'US',
+          currency: 'USD',
+          low: entry.low,
+          high: entry.high,
+          source: 'TCGPLAYER',
+        });
+      expect(upsert.status).toBe(201);
+    }
+
+    const allVariantsSearch = await request(app.getHttpServer()).get('/cards/search').query({
+      q: 'CollisionMon',
+      language: 'EN',
+      setCode: 'collision-regression',
+      number: '25',
+      limit: '20',
+    });
+    expect(allVariantsSearch.status).toBe(200);
+    expect(allVariantsSearch.body.items).toHaveLength(6);
+
+    for (const entry of variantCases) {
+      const byVariant = await request(app.getHttpServer()).get('/cards/search').query({
+        q: 'CollisionMon',
+        language: 'EN',
+        setCode: 'collision-regression',
+        number: '25',
+        variant: entry.variant,
+      });
+
+      expect(byVariant.status).toBe(200);
+      expect(byVariant.body.items).toHaveLength(1);
+      expect(byVariant.body.items[0].variant).toBe(entry.variant);
+
+      const card = created.find((candidate) => candidate.variant === entry.variant);
+      expect(card).toBeDefined();
+
+      const price = await request(app.getHttpServer())
+        .get(`/cards/${card!.id}/prices`)
+        .query({ market: 'US' });
+      expect(price.status).toBe(200);
+      expect(price.body.low).toBe(entry.low);
+      expect(price.body.high).toBe(entry.high);
+    }
+
+    const maps = await prisma.externalProductMap.findMany({
+      where: {
+        provider: ExternalProvider.TCGPLAYER,
+        market: Market.US,
+      },
+    });
+    expect(maps).toHaveLength(6);
+
+    const snapshots = await prisma.priceSnapshot.findMany({ where: { market: Market.US } });
+    expect(snapshots).toHaveLength(6);
+  });
+
   it('GET /cards/search applies language/set/number/variant filters with limit', async () => {
     await prisma.cardIdentity.createMany({
       data: [

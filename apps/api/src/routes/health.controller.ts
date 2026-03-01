@@ -18,7 +18,8 @@ export class HealthController {
       rawSnapshot &&
       typeof rawSnapshot === 'object' &&
       'cache' in rawSnapshot &&
-      'providers' in rawSnapshot
+      'providers' in rawSnapshot &&
+      'variants' in rawSnapshot
         ? rawSnapshot
         : {
             cache: {
@@ -26,6 +27,7 @@ export class HealthController {
               memory: { hit: 0, miss: 0, set: 0, read_error: 0, write_error: 0 },
             },
             providers: [],
+            variants: [],
           };
     const lines: string[] = [];
 
@@ -66,6 +68,20 @@ export class HealthController {
       );
       lines.push(
         `pokecard_provider_latency_ms{provider="${provider.provider}",stat="max"} ${provider.latencyMs.max}`,
+      );
+    }
+
+    lines.push('# HELP pokecard_variant_requests_total Variant request counters by flow');
+    lines.push('# TYPE pokecard_variant_requests_total counter');
+    for (const variant of snapshot.variants) {
+      lines.push(
+        `pokecard_variant_requests_total{variant="${variant.variant}",flow="get_price"} ${variant.getPriceCalls}`,
+      );
+      lines.push(
+        `pokecard_variant_requests_total{variant="${variant.variant}",flow="register_price"} ${variant.registerCalls}`,
+      );
+      lines.push(
+        `pokecard_variant_requests_total{variant="${variant.variant}",flow="provider_fetch"} ${variant.providerFetches}`,
       );
     }
 

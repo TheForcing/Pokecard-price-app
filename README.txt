@@ -32,6 +32,7 @@ URLs
 Environment
 - Web
   - NEXT_PUBLIC_API_BASE (default: http://localhost:4000)
+  - NEXT_PUBLIC_RECOGNIZE_TIMEOUT_MS (default: 240000)
 - API price providers
   - US (TCGplayer): PRICE_PROVIDER_US_CLIENT_ID, PRICE_PROVIDER_US_CLIENT_SECRET
     PRICE_PROVIDER_US_CATEGORY_ID (default 3), PRICE_PROVIDER_US_SOURCE (default TCGPLAYER)
@@ -61,6 +62,13 @@ Testing
   - DATABASE_URL
   - RUN_DB_INTEGRATION_TESTS=true
   If not set, DB integration tests are skipped.
+- Manual OCR smoke test (no DB required):
+  - pnpm ocr:manual
+  - Uses fixture image at `tests/fixtures/046.png` and verifies crop/OCR/post-processing path.
+- Variant price separation check (API + DB required):
+  - pnpm price:variant-check
+  - Creates temporary EN cards with same name/number but different variants (NORMAL/HOLOFOIL),
+    registers different prices, verifies separated results, then cleans up temp records.
 
 Operational notes
 - See docs/cache-policy.md for cache key, TTL, invalidation, and observability policy.
