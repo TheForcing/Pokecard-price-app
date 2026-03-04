@@ -65,6 +65,11 @@ export function UploadCameraCropSection({
   const streamRef = useRef<MediaStream | null>(null);
   const [selectedFileName, setSelectedFileName] = useState('');
 
+  const canUseDirectCamera =
+    typeof window !== 'undefined' &&
+    window.isSecureContext &&
+    !!navigator.mediaDevices?.getUserMedia;
+
   useEffect(() => {
     async function startCamera() {
       setCameraError(null);
@@ -203,6 +208,22 @@ export function UploadCameraCropSection({
     const quality = await evaluateImageQuality(dataUrl);
     setImageMeta(quality.meta);
     setQualityWarning(quality.warning);
+  }
+
+  function handleToggleCamera() {
+    if (cameraActive) {
+      setCameraActive(false);
+      return;
+    }
+
+    if (!canUseDirectCamera) {
+      setCameraError('Direct camera requires HTTPS on mobile Chrome. Use "Choose Image" to open camera.');
+      fileInputRef.current?.click();
+      return;
+    }
+
+    setCameraError(null);
+    setCameraActive(true);
   }
 
   function onCropPointerDown(event: React.PointerEvent<HTMLCanvasElement>) {
@@ -398,7 +419,7 @@ export function UploadCameraCropSection({
           Camera
           <div style={{ display: 'flex', gap: 8 }}>
             <button
-              onClick={() => setCameraActive((current) => !current)}
+              onClick={handleToggleCamera}
               style={{ height: 40 }}
               type="button"
               aria-pressed={cameraActive}
@@ -464,6 +485,7 @@ export function UploadCameraCropSection({
         <section style={{ marginTop: 12 }}>
           <video
             ref={videoRef}
+            autoPlay
             playsInline
             muted
             style={{ width: '100%', maxWidth: 520, borderRadius: 12, border: '1px solid #ddd' }}
