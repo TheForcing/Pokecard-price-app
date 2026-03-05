@@ -25,22 +25,17 @@ export function useRecognize({ apiBase, lowConfidenceThreshold = 0.5 }: UseRecog
   const [recognizeRes, setRecognizeRes] = useState<RecognizeResponse | null>(null);
   const [selected, setSelected] = useState<CandidateCard | null>(null);
   const [lowConfidence, setLowConfidence] = useState(false);
-  const [showAllCandidates, setShowAllCandidates] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const candidates = useMemo(() => recognizeRes?.candidates ?? [], [recognizeRes]);
-  const displayedCandidates = useMemo(
-    () => (showAllCandidates ? candidates : candidates.slice(0, 5)),
-    [candidates, showAllCandidates],
-  );
+  const topCandidates = useMemo(() => candidates.slice(0, 3), [candidates]);
   const isLowConfidence =
     (selected?.confidence != null && selected.confidence < lowConfidenceThreshold) || lowConfidence;
 
   async function recognize(preview: string, market: Market, language: Language) {
     setLoading(true);
     setError(null);
-    setShowAllCandidates(false);
     try {
       const res = await fetchWithCustomTimeout(`${apiBase}/recognize`, recognizeTimeoutMs, {
         method: 'POST',
@@ -72,7 +67,6 @@ export function useRecognize({ apiBase, lowConfidenceThreshold = 0.5 }: UseRecog
     setRecognizeRes(null);
     setSelected(null);
     setLowConfidence(false);
-    setShowAllCandidates(false);
   }
 
   function clearError() {
@@ -83,15 +77,13 @@ export function useRecognize({ apiBase, lowConfidenceThreshold = 0.5 }: UseRecog
     recognizeRes,
     selected,
     lowConfidence,
-    showAllCandidates,
     loading,
     error,
     candidates,
-    displayedCandidates,
+    topCandidates,
     isLowConfidence,
     recognize,
     selectCandidate,
-    setShowAllCandidates,
     reset,
     clearError,
   };

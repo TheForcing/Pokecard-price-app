@@ -104,11 +104,9 @@ export default function HomePage() {
 
       <CandidatesSection
         candidates={recognize.candidates}
-        displayedCandidates={recognize.displayedCandidates}
+        topCandidates={recognize.topCandidates}
         selected={recognize.selected}
         isLowConfidence={recognize.isLowConfidence}
-        showAllCandidates={recognize.showAllCandidates}
-        onToggleShowAll={() => recognize.setShowAllCandidates(!recognize.showAllCandidates)}
         onSelect={(candidate) => {
           recognize.selectCandidate(candidate);
           price.clearPrice();
