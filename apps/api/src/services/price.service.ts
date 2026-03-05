@@ -135,6 +135,46 @@ function toNumber(value: unknown): number | null {
   return null;
 }
 
+function uniqueSortedAsc(values: number[]): number[] {
+  return [...new Set(values.filter((value) => Number.isFinite(value)))].sort((a, b) => a - b);
+}
+
+function uniqueSortedDesc(values: number[]): number[] {
+  return [...new Set(values.filter((value) => Number.isFinite(value)))].sort((a, b) => b - a);
+}
+
+function top3Low(values: number[]): number[] {
+  return uniqueSortedAsc(values).slice(0, 3);
+}
+
+function top3High(values: number[]): number[] {
+  return uniqueSortedDesc(values).slice(0, 3);
+}
+
+function withFallbackTop3(values: number[], fallback: number | null): number[] {
+  if (values.length > 0) return values;
+  return fallback == null ? [] : [fallback];
+}
+
+function buildStubTop3(low: number | null, high: number | null): { lowTop3: number[]; highTop3: number[] } {
+  if (low == null && high == null) return { lowTop3: [], highTop3: [] };
+  if (low == null) return { lowTop3: [], highTop3: [high as number] };
+  if (high == null) return { lowTop3: [low], highTop3: [low] };
+
+  const spread = Math.max(0, high - low);
+  const lowTop3 = [low, low + spread * 0.12, low + spread * 0.24].map((value) =>
+    Number(value.toFixed(2)),
+  );
+  const highTop3 = [high, high - spread * 0.12, high - spread * 0.24]
+    .map((value) => Number(value.toFixed(2)))
+    .filter((value) => value >= low);
+
+  return {
+    lowTop3: top3Low(lowTop3),
+    highTop3: top3High(highTop3),
+  };
+}
+
 function isPriceResponse(value: unknown): value is PriceResponse {
   if (!isRecord(value)) return false;
   return (
@@ -592,12 +632,15 @@ export class PriceService implements OnModuleDestroy {
     const low = market === 'JP' ? 1200 : market === 'KR' ? 1500 : 12.5;
     const high = market === 'JP' ? 9800 : market === 'KR' ? 12000 : 210.0;
     const source = market === 'JP' ? 'JP_STUB' : market === 'KR' ? 'KR_STUB' : 'US_STUB';
+    const top3 = buildStubTop3(low, high);
     return {
       cardId,
       market,
       currency,
       low,
       high,
+      lowTop3: top3.lowTop3,
+      highTop3: top3.highTop3,
       source,
       fetchedAt: new Date().toISOString(),
     };
@@ -701,10 +744,22 @@ export class PriceService implements OnModuleDestroy {
     }
 
     const pricing = pricingPayload.results[0];
-    const low = isRecord(pricing)
-      ? (toNumber(pricing.lowPrice) ?? toNumber(pricing.marketPrice))
-      : null;
-    const high = isRecord(pricing) ? (toNumber(pricing.highPrice) ?? low) : null;
+    const lowCandidates = pricingPayload.results
+      .map((entry) => {
+        if (!isRecord(entry)) return null;
+        return toNumber(entry.lowPrice) ?? toNumber(entry.marketPrice);
+      })
+      .filter((value): value is number => value != null);
+    const highCandidates = pricingPayload.results
+      .map((entry) => {
+        if (!isRecord(entry)) return null;
+        return toNumber(entry.highPrice) ?? toNumber(entry.marketPrice);
+      })
+      .filter((value): value is number => value != null);
+    const lowTop3 = top3Low(lowCandidates);
+    const highTop3 = top3High(highCandidates);
+    const low = lowTop3[0] ?? (isRecord(pricing) ? toNumber(pricing.lowPrice) : null);
+    const high = highTop3[0] ?? (isRecord(pricing) ? (toNumber(pricing.highPrice) ?? low) : low);
 
     return {
       cardId: cardQuery,
@@ -712,6 +767,8 @@ export class PriceService implements OnModuleDestroy {
       currency: 'USD',
       low,
       high,
+      lowTop3: withFallbackTop3(lowTop3, low),
+      highTop3: withFallbackTop3(highTop3, high),
       source: getEnvValue('PRICE_PROVIDER_US_SOURCE') ?? 'TCGPLAYER',
       priceType: 'LISTING',
       capturedAt: new Date().toISOString(),
@@ -733,6 +790,8 @@ export class PriceService implements OnModuleDestroy {
         currency: 'USD',
         low: null,
         high: null,
+        lowTop3: [],
+        highTop3: [],
         source: getEnvValue('PRICE_PROVIDER_US_SOURCE') ?? 'TCGPLAYER',
         priceType: 'LISTING',
         capturedAt: new Date().toISOString(),
@@ -775,6 +834,8 @@ export class PriceService implements OnModuleDestroy {
 
     const low = prices.length ? Math.min(...prices) : null;
     const high = prices.length ? Math.max(...prices) : null;
+    const lowTop3 = top3Low(prices);
+    const highTop3 = top3High(prices);
 
     return {
       cardId: cardQuery,
@@ -782,6 +843,8 @@ export class PriceService implements OnModuleDestroy {
       currency: 'JPY',
       low,
       high,
+      lowTop3: withFallbackTop3(lowTop3, low),
+      highTop3: withFallbackTop3(highTop3, high),
       source: getEnvValue('PRICE_PROVIDER_JP_SOURCE') ?? 'RAKUTEN',
       priceType: 'LISTING',
       capturedAt: new Date().toISOString(),
@@ -827,6 +890,8 @@ export class PriceService implements OnModuleDestroy {
 
     const low = prices.length ? Math.min(...prices) : null;
     const high = highs.length ? Math.max(...highs) : low;
+    const lowTop3 = top3Low(prices);
+    const highTop3 = top3High(highs.length ? highs : prices);
 
     return {
       cardId: cardQuery,
@@ -834,6 +899,8 @@ export class PriceService implements OnModuleDestroy {
       currency: 'KRW',
       low,
       high,
+      lowTop3: withFallbackTop3(lowTop3, low),
+      highTop3: withFallbackTop3(highTop3, high),
       source: getEnvValue('PRICE_PROVIDER_KR_SOURCE') ?? 'NAVER',
       priceType: 'LISTING',
       capturedAt: new Date().toISOString(),
@@ -1013,12 +1080,16 @@ export class PriceService implements OnModuleDestroy {
     });
 
     const nowIso = new Date().toISOString();
+    const lowTop3 = low == null ? [] : [low];
+    const highTop3 = high == null ? (low == null ? [] : [low]) : [high];
     const response: PriceResponse = {
       cardId: card.id,
       market: payload.market,
       currency,
       low,
       high,
+      lowTop3,
+      highTop3,
       source: provider,
       priceType: payload.priceType ?? 'LISTING',
       capturedAt: capturedAt.toISOString(),
@@ -1070,6 +1141,8 @@ export class PriceService implements OnModuleDestroy {
       source: map.provider,
       priceType: response.priceType ?? 'LISTING',
       capturedAt: response.capturedAt ?? new Date().toISOString(),
+      lowTop3: withFallbackTop3(response.lowTop3 ?? [], response.low),
+      highTop3: withFallbackTop3(response.highTop3 ?? [], response.high ?? response.low),
     };
 
     await this.storeSnapshot(map, response);

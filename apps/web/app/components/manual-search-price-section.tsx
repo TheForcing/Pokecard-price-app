@@ -43,6 +43,10 @@ export function ManualSearchPriceSection({
   const [manualNumber, setManualNumber] = useState('');
   const [manualVariant, setManualVariant] = useState<CardVariant | ''>('NORMAL');
 
+  function formatPrice(value: number): string {
+    return `${price?.currency ?? ''} ${value}`.trim();
+  }
+
   return (
     <>
       <section className="panel">
@@ -225,19 +229,33 @@ export function ManualSearchPriceSection({
             <div className="price-grid">
               <div className="price-card">
                 <div className="muted" style={{ fontSize: 12 }}>
-                  Low ({price.source})
+                  Lowest Top 3 ({price.source})
                 </div>
-                <div className="price-value">
-                  {price.low == null ? '-' : `${price.currency} ${price.low}`}
-                </div>
+                {((price.lowTop3 ?? []).length > 0 || price.low != null) && (
+                  <ol style={{ margin: '8px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
+                    {(price.lowTop3 ?? (price.low == null ? [] : [price.low])).map((value, index) => (
+                      <li key={`${value}-${index}`}>{formatPrice(value)}</li>
+                    ))}
+                  </ol>
+                )}
+                {(price.lowTop3 ?? []).length === 0 && price.low == null && <div className="price-value">-</div>}
               </div>
               <div className="price-card">
                 <div className="muted" style={{ fontSize: 12 }}>
-                  High ({price.source})
+                  Highest Top 3 ({price.source})
                 </div>
-                <div className="price-value">
-                  {price.high == null ? '-' : `${price.currency} ${price.high}`}
-                </div>
+                {((price.highTop3 ?? []).length > 0 || price.high != null || price.low != null) && (
+                  <ol style={{ margin: '8px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
+                    {(price.highTop3 ??
+                      (price.high == null ? (price.low == null ? [] : [price.low]) : [price.high])
+                    ).map((value, index) => (
+                      <li key={`${value}-${index}`}>{formatPrice(value)}</li>
+                    ))}
+                  </ol>
+                )}
+                {(price.highTop3 ?? []).length === 0 && price.high == null && price.low == null && (
+                  <div className="price-value">-</div>
+                )}
               </div>
               <div className="muted" style={{ gridColumn: '1 / -1', fontSize: 12 }}>
                 fetchedAt: {price.fetchedAt}
