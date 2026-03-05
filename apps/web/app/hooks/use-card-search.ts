@@ -20,6 +20,7 @@ export function useCardSearch({ apiBase }: UseCardSearchParams) {
   const [manualResults, setManualResults] = useState<CardIdentity[]>([]);
   const [manualSelected, setManualSelected] = useState<CardIdentity | null>(null);
   const [showAllManualResults, setShowAllManualResults] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,6 +32,7 @@ export function useCardSearch({ apiBase }: UseCardSearchParams) {
   async function searchCards(input: CardSearchInput) {
     setLoading(true);
     setError(null);
+    setHasSearched(true);
     try {
       const params = new URLSearchParams();
       if (input.query.trim()) params.set('q', input.query.trim());
@@ -64,6 +66,7 @@ export function useCardSearch({ apiBase }: UseCardSearchParams) {
     displayedManualResults,
     manualSelected,
     showAllManualResults,
+    hasSearched,
     loading,
     error,
     searchCards,

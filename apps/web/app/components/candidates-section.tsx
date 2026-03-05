@@ -89,13 +89,11 @@ export function CandidatesSection({
                       onClick={() => {
                         onSelect(candidate);
                       }}
-                      style={{ height: 30 }}
                     >
                       Select
                     </button>
                     <button
                       onClick={() => onGetPrice(candidate.identityId ?? candidate.cardId)}
-                      style={{ height: 30 }}
                     >
                       Get Price
                     </button>
@@ -109,7 +107,7 @@ export function CandidatesSection({
               className="ghost"
               type="button"
               onClick={onToggleShowAll}
-              style={{ marginTop: 8, height: 32 }}
+              style={{ marginTop: 8 }}
               aria-expanded={showAllCandidates}
             >
               {showAllCandidates ? 'Show top 5' : 'Show all'}

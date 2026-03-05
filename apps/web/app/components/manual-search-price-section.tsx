@@ -10,6 +10,7 @@ type ManualSearchPriceSectionProps = {
   displayedManualResults: CardIdentity[];
   manualSelected: CardIdentity | null;
   showAllManualResults: boolean;
+  hasSearched: boolean;
   manualLoading: boolean;
   price: PriceResponse | null;
   onSearch: (input: CardSearchInput) => Promise<void> | void;
@@ -24,6 +25,7 @@ export function ManualSearchPriceSection({
   displayedManualResults,
   manualSelected,
   showAllManualResults,
+  hasSearched,
   manualLoading,
   price,
   onSearch,
@@ -120,7 +122,7 @@ export function ManualSearchPriceSection({
                 language,
               })
             }
-            style={{ height: 40, alignSelf: 'end' }}
+            style={{ alignSelf: 'end' }}
           >
             {manualLoading ? 'Searching…' : 'Search'}
           </button>
@@ -128,7 +130,9 @@ export function ManualSearchPriceSection({
 
         {manualResults.length === 0 ? (
           <p className="muted" style={{ marginTop: 10 }}>
-            No manual results yet.
+            {hasSearched
+              ? 'No matching cards found. Try name-only search first, then add set/number.'
+              : 'No manual results yet.'}
           </p>
         ) : (
           <>
@@ -184,11 +188,10 @@ export function ManualSearchPriceSection({
                         onClick={() => {
                           onSelectManual(card);
                         }}
-                        style={{ height: 30 }}
                       >
                         Select
                       </button>
-                      <button onClick={() => onGetPrice(card.id)} style={{ height: 30 }}>
+                      <button onClick={() => onGetPrice(card.id)}>
                         Get Price
                       </button>
                     </div>
@@ -201,7 +204,7 @@ export function ManualSearchPriceSection({
                 className="ghost"
                 type="button"
                 onClick={onToggleShowAllManual}
-                style={{ marginTop: 8, height: 32 }}
+                style={{ marginTop: 8 }}
                 aria-expanded={showAllManualResults}
               >
                 {showAllManualResults ? 'Show top 5' : 'Show all'}

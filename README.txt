@@ -70,6 +70,20 @@ Testing
   - Creates temporary EN cards with same name/number but different variants (NORMAL/HOLOFOIL),
     registers different prices, verifies separated results, then cleans up temp records.
 
+Release readiness check (practical gate)
+- One-command full gate: pnpm release:check
+- What it validates:
+  - DB reachable with DATABASE_URL (defaults to local docker Postgres)
+  - Prisma schema sync for API test DB (`prisma db push`)
+  - Workspace fast tests (`pnpm test`)
+  - API DB integration tests (`pnpm test:integration`)
+  - OCR smoke test (`pnpm ocr:manual`)
+  - Workspace typecheck and build (`pnpm typecheck`, `pnpm build`)
+  - Web E2E (`pnpm -C apps/web test:e2e`)
+- Typical local flow:
+  - pnpm docker:up
+  - pnpm release:check
+
 Operational notes
 - See docs/cache-policy.md for cache key, TTL, invalidation, and observability policy.
 - Redis-backed cache is recommended for multi-instance deployments to avoid per-instance cache divergence.
