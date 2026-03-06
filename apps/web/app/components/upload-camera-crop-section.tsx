@@ -70,6 +70,17 @@ export function UploadCameraCropSection({
     window.isSecureContext &&
     !!navigator.mediaDevices?.getUserMedia;
 
+  function normalizeCameraError(message: string): string {
+    const lowered = message.toLowerCase();
+    if (lowered.includes('requested device not found') || lowered.includes('notfounderror')) {
+      return 'No rear camera found. Try front camera or use Choose Image.';
+    }
+    if (lowered.includes('notallowederror') || lowered.includes('permission denied')) {
+      return 'Camera permission denied. Allow camera access in browser settings and retry.';
+    }
+    return message;
+  }
+
   useEffect(() => {
     async function startCamera() {
       setCameraError(null);
@@ -89,7 +100,7 @@ export function UploadCameraCropSection({
         }
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'failed to access camera';
-        setCameraError(message);
+        setCameraError(normalizeCameraError(message));
         setCameraActive(false);
       }
     }
@@ -383,12 +394,11 @@ export function UploadCameraCropSection({
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           Crop
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div className="action-row">
             <button
               type="button"
               disabled={!preview}
               onClick={applyAutoCrop}
-              style={{ height: 40 }}
             >
               Auto Crop
             </button>
@@ -400,7 +410,6 @@ export function UploadCameraCropSection({
                 setCropRect(null);
                 setCropMessage(null);
               }}
-              style={{ height: 40 }}
             >
               Manual Crop
             </button>
@@ -408,7 +417,6 @@ export function UploadCameraCropSection({
               type="button"
               disabled={!preview || !original}
               onClick={resetToOriginal}
-              style={{ height: 40 }}
             >
               Reset
             </button>
@@ -417,10 +425,9 @@ export function UploadCameraCropSection({
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           Camera
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div className="action-row">
             <button
               onClick={handleToggleCamera}
-              style={{ height: 40 }}
               type="button"
               aria-pressed={cameraActive}
               aria-describedby={cameraError ? cameraErrorId : undefined}
@@ -430,7 +437,6 @@ export function UploadCameraCropSection({
             <button
               onClick={captureFromCamera}
               disabled={!cameraActive}
-              style={{ height: 40 }}
               type="button"
             >
               Capture
@@ -448,7 +454,7 @@ export function UploadCameraCropSection({
             if (preview) onRecognize(preview);
           }}
           disabled={!preview || loading}
-          style={{ height: 40, alignSelf: 'end' }}
+          style={{ alignSelf: 'end' }}
         >
           {loading ? 'Working…' : 'Recognize'}
         </button>

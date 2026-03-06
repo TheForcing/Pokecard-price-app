@@ -4,22 +4,18 @@ import type { CandidateCard } from '@pokecard/shared';
 
 type CandidatesSectionProps = {
   candidates: CandidateCard[];
-  displayedCandidates: CandidateCard[];
+  topCandidates: CandidateCard[];
   selected: CandidateCard | null;
   isLowConfidence: boolean;
-  showAllCandidates: boolean;
-  onToggleShowAll: () => void;
   onSelect: (candidate: CandidateCard) => void;
   onGetPrice: (cardId: string) => void;
 };
 
 export function CandidatesSection({
   candidates,
-  displayedCandidates,
+  topCandidates,
   selected,
   isLowConfidence,
-  showAllCandidates,
-  onToggleShowAll,
   onSelect,
   onGetPrice,
 }: CandidatesSectionProps) {
@@ -37,8 +33,11 @@ export function CandidatesSection({
         </p>
       ) : (
         <>
-          <ul className="card-list">
-            {displayedCandidates.map((candidate) => (
+          <p className="muted" style={{ marginTop: 8, fontSize: 12 }}>
+            Showing top 3 similar names.
+          </p>
+          <ul className="card-list" style={{ marginTop: 10 }}>
+            {topCandidates.map((candidate, index) => (
               <li
                 key={candidate.cardId}
                 className={`entity-card ${selected?.cardId === candidate.cardId ? 'selected' : ''}`}
@@ -51,28 +50,9 @@ export function CandidatesSection({
                     flexWrap: 'wrap',
                   }}
                 >
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 220 }}>
-                    <div className="thumb">
-                      {candidate.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={candidate.imageUrl}
-                          alt={candidate.name}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        />
-                      ) : (
-                        'No image'
-                      )}
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: 600 }}>{candidate.name}</div>
-                      <div className="muted" style={{ fontSize: 12 }}>
-                        {candidate.setCode ?? '-'} / {candidate.number ?? '-'} /{' '}
-                        {candidate.language ?? '-'}
-                      </div>
-                      <div className="muted" style={{ fontSize: 12 }}>
-                        confidence: {candidate.confidence.toFixed(2)}
-                      </div>
+                  <div style={{ minWidth: 220 }}>
+                    <div style={{ fontWeight: 600 }}>
+                      {index + 1}. {candidate.name}
                     </div>
                   </div>
                   <div
@@ -86,16 +66,16 @@ export function CandidatesSection({
                   >
                     <button
                       className="secondary"
+                      type="button"
                       onClick={() => {
                         onSelect(candidate);
                       }}
-                      style={{ height: 30 }}
                     >
                       Select
                     </button>
                     <button
+                      type="button"
                       onClick={() => onGetPrice(candidate.identityId ?? candidate.cardId)}
-                      style={{ height: 30 }}
                     >
                       Get Price
                     </button>
@@ -104,17 +84,6 @@ export function CandidatesSection({
               </li>
             ))}
           </ul>
-          {candidates.length > 5 && (
-            <button
-              className="ghost"
-              type="button"
-              onClick={onToggleShowAll}
-              style={{ marginTop: 8, height: 32 }}
-              aria-expanded={showAllCandidates}
-            >
-              {showAllCandidates ? 'Show top 5' : 'Show all'}
-            </button>
-          )}
         </>
       )}
     </section>

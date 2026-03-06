@@ -10,6 +10,7 @@ type ManualSearchPriceSectionProps = {
   displayedManualResults: CardIdentity[];
   manualSelected: CardIdentity | null;
   showAllManualResults: boolean;
+  hasSearched: boolean;
   manualLoading: boolean;
   price: PriceResponse | null;
   onSearch: (input: CardSearchInput) => Promise<void> | void;
@@ -24,6 +25,7 @@ export function ManualSearchPriceSection({
   displayedManualResults,
   manualSelected,
   showAllManualResults,
+  hasSearched,
   manualLoading,
   price,
   onSearch,
@@ -40,6 +42,10 @@ export function ManualSearchPriceSection({
   const [manualSetCode, setManualSetCode] = useState('');
   const [manualNumber, setManualNumber] = useState('');
   const [manualVariant, setManualVariant] = useState<CardVariant | ''>('NORMAL');
+
+  function formatPrice(value: number): string {
+    return `${price?.currency ?? ''} ${value}`.trim();
+  }
 
   return (
     <>
@@ -120,7 +126,7 @@ export function ManualSearchPriceSection({
                 language,
               })
             }
-            style={{ height: 40, alignSelf: 'end' }}
+            style={{ alignSelf: 'end' }}
           >
             {manualLoading ? 'Searching…' : 'Search'}
           </button>
@@ -128,7 +134,9 @@ export function ManualSearchPriceSection({
 
         {manualResults.length === 0 ? (
           <p className="muted" style={{ marginTop: 10 }}>
-            No manual results yet.
+            {hasSearched
+              ? 'No matching cards found. Try name-only search first, then add set/number.'
+              : 'No manual results yet.'}
           </p>
         ) : (
           <>
@@ -184,11 +192,10 @@ export function ManualSearchPriceSection({
                         onClick={() => {
                           onSelectManual(card);
                         }}
-                        style={{ height: 30 }}
                       >
                         Select
                       </button>
-                      <button onClick={() => onGetPrice(card.id)} style={{ height: 30 }}>
+                      <button onClick={() => onGetPrice(card.id)}>
                         Get Price
                       </button>
                     </div>
@@ -201,7 +208,7 @@ export function ManualSearchPriceSection({
                 className="ghost"
                 type="button"
                 onClick={onToggleShowAllManual}
-                style={{ marginTop: 8, height: 32 }}
+                style={{ marginTop: 8 }}
                 aria-expanded={showAllManualResults}
               >
                 {showAllManualResults ? 'Show top 5' : 'Show all'}
@@ -222,19 +229,33 @@ export function ManualSearchPriceSection({
             <div className="price-grid">
               <div className="price-card">
                 <div className="muted" style={{ fontSize: 12 }}>
-                  Low ({price.source})
+                  Lowest Top 3 ({price.source})
                 </div>
-                <div className="price-value">
-                  {price.low == null ? '-' : `${price.currency} ${price.low}`}
-                </div>
+                {((price.lowTop3 ?? []).length > 0 || price.low != null) && (
+                  <ol style={{ margin: '8px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
+                    {(price.lowTop3 ?? (price.low == null ? [] : [price.low])).map((value, index) => (
+                      <li key={`${value}-${index}`}>{formatPrice(value)}</li>
+                    ))}
+                  </ol>
+                )}
+                {(price.lowTop3 ?? []).length === 0 && price.low == null && <div className="price-value">-</div>}
               </div>
               <div className="price-card">
                 <div className="muted" style={{ fontSize: 12 }}>
-                  High ({price.source})
+                  Highest Top 3 ({price.source})
                 </div>
-                <div className="price-value">
-                  {price.high == null ? '-' : `${price.currency} ${price.high}`}
-                </div>
+                {((price.highTop3 ?? []).length > 0 || price.high != null || price.low != null) && (
+                  <ol style={{ margin: '8px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
+                    {(price.highTop3 ??
+                      (price.high == null ? (price.low == null ? [] : [price.low]) : [price.high])
+                    ).map((value, index) => (
+                      <li key={`${value}-${index}`}>{formatPrice(value)}</li>
+                    ))}
+                  </ol>
+                )}
+                {(price.highTop3 ?? []).length === 0 && price.high == null && price.low == null && (
+                  <div className="price-value">-</div>
+                )}
               </div>
               <div className="muted" style={{ gridColumn: '1 / -1', fontSize: 12 }}>
                 fetchedAt: {price.fetchedAt}

@@ -1,19 +1,21 @@
 Pokemon Card Price Finder (Monorepo)
 
 What you get
-- apps/web: Next.js (TypeScript) app with upload/crop/recognize flow, candidate selection, manual search, and price lookup UI
+- apps/web: Next.js (TypeScript) app with upload/crop/recognize flow, top-3 candidate name selection, manual search, and top-3 low/high price lookup UI
 - apps/api: NestJS (TypeScript) API with health, recognize, search, and price endpoints
 - packages/shared: shared request/response/types used by web and api
 - infra/docker-compose.yml: Postgres + Redis for local dev runtime
 
 Current implementation status
 - Recognition is implemented in API with OCR pipeline (Tesseract and optional EasyOCR), image preprocessing/cropping, and candidate generation.
+- Recognize result UI intentionally shows only top 3 similar candidate names to reduce noisy choices on mobile.
 - Price lookup is implemented with market-specific providers:
   - US: TCGplayer
   - JP: Rakuten
   - KR: Naver
 - If provider credentials are missing, price responses fall back to market-specific stub values.
 - Price snapshots and provider mappings are persisted with Prisma.
+- Price response includes single representative low/high and list-style `lowTop3` / `highTop3` breakdown for better spread visibility.
 
 Prereqs
 - Node.js 18+
@@ -69,6 +71,20 @@ Testing
   - pnpm price:variant-check
   - Creates temporary EN cards with same name/number but different variants (NORMAL/HOLOFOIL),
     registers different prices, verifies separated results, then cleans up temp records.
+
+Release readiness check (practical gate)
+- One-command full gate: pnpm release:check
+- What it validates:
+  - DB reachable with DATABASE_URL (defaults to local docker Postgres)
+  - Prisma schema sync for API test DB (`prisma db push`)
+  - Workspace fast tests (`pnpm test`)
+  - API DB integration tests (`pnpm test:integration`)
+  - OCR smoke test (`pnpm ocr:manual`)
+  - Workspace typecheck and build (`pnpm typecheck`, `pnpm build`)
+  - Web E2E (`pnpm -C apps/web test:e2e`)
+- Typical local flow:
+  - pnpm docker:up
+  - pnpm release:check
 
 Operational notes
 - See docs/cache-policy.md for cache key, TTL, invalidation, and observability policy.

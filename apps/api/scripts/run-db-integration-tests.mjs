@@ -42,7 +42,10 @@ async function main() {
   try {
     await ensureDatabaseReachable(databaseUrl);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'unknown error';
+    const message =
+      error instanceof Error
+        ? `${error.message}${'code' in error && error.code ? ` (code: ${error.code})` : ''}`
+        : 'unknown error';
     console.error(`Database is not reachable for integration tests: ${message}`);
     process.exit(1);
   }

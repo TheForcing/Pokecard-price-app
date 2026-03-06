@@ -16,6 +16,7 @@
     "ocr:manual": "pnpm -C apps/api ocr:smoke",
     "price:variant-check": "pnpm -C apps/api price:variant-check",
     "quality:variant-scan": "pnpm -C apps/api quality:variant-scan",
+    "release:check": "node scripts/release-readiness-check.mjs",
     "typecheck": "pnpm -r typecheck",
     "format": "prettier -w .",
     "docker:up": "docker compose -f infra/docker-compose.yml up -d",

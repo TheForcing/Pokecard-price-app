@@ -63,6 +63,8 @@ export interface PriceResponse {
   currency: string;
   low: number | null;
   high: number | null;
+  lowTop3?: number[];
+  highTop3?: number[];
   source: string;
   priceType?: PriceType;
   capturedAt?: string;
