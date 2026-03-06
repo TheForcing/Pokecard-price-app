@@ -125,7 +125,9 @@ test.describe('Home flows', () => {
     });
 
     await page.getByRole('button', { name: 'Recognize' }).click();
-    await expect(page.getByText('Error: recognize failed: 500')).toBeVisible();
+    await expect(
+      page.getByText('Card recognition failed. Please retake the photo with clearer card boundaries.'),
+    ).toBeVisible();
 
     await page.getByLabel('Name').fill('Charizard');
     await page.getByRole('button', { name: 'Search' }).click();
