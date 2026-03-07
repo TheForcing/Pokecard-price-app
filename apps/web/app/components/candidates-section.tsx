@@ -8,7 +8,9 @@ type CandidatesSectionProps = {
   selected: CandidateCard | null;
   isLowConfidence: boolean;
   onSelect: (candidate: CandidateCard) => void;
-  onGetPrice: (cardId: string) => void;
+  isWatchlisted: (candidate: CandidateCard) => boolean;
+  onToggleWatchlist: (candidate: CandidateCard) => void;
+  onGetPrice: (candidate: CandidateCard) => void;
 };
 
 export function CandidatesSection({
@@ -17,6 +19,8 @@ export function CandidatesSection({
   selected,
   isLowConfidence,
   onSelect,
+  isWatchlisted,
+  onToggleWatchlist,
   onGetPrice,
 }: CandidatesSectionProps) {
   return (
@@ -75,9 +79,16 @@ export function CandidatesSection({
                     </button>
                     <button
                       type="button"
-                      onClick={() => onGetPrice(candidate.identityId ?? candidate.cardId)}
+                      onClick={() => onGetPrice(candidate)}
                     >
                       Get Price
+                    </button>
+                    <button
+                      className="ghost"
+                      type="button"
+                      onClick={() => onToggleWatchlist(candidate)}
+                    >
+                      {isWatchlisted(candidate) ? 'Remove Watchlist' : 'Add Watchlist'}
                     </button>
                   </div>
                 </div>

@@ -1,7 +1,8 @@
 'use client';
 
 import type { Language, Market } from '@pokecard/shared';
-import { useState } from 'react';
+import type { CandidateCard, CardIdentity, PriceResponse } from '@pokecard/shared';
+import { useEffect, useState } from 'react';
 import { CandidatesSection } from './components/candidates-section';
 import { ManualSearchPriceSection } from './components/manual-search-price-section';
 import { UploadCameraCropSection } from './components/upload-camera-crop-section';
@@ -10,6 +11,94 @@ import { usePrice } from './hooks/use-price';
 import { useRecognize } from './hooks/use-recognize';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:4000';
+const WATCHLIST_STORAGE_KEY = 'pokecard:watchlist:v1';
+const RECENT_STORAGE_KEY = 'pokecard:recent:v1';
+const RECENT_LIMIT = 10;
+
+type SavedCard = {
+  lookupId: string;
+  name: string;
+  market: Market;
+  language?: Language;
+  setCode?: string;
+  number?: string;
+  variant?: string;
+  imageUrl?: string;
+  viewedAt: string;
+  lastPrice?: {
+    currency: string;
+    low: number | null;
+    high: number | null;
+    source: string;
+    fetchedAt: string;
+  };
+};
+
+function parseSavedCards(raw: string | null): SavedCard[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item): item is SavedCard =>
+        !!item &&
+        typeof item === 'object' &&
+        typeof (item as SavedCard).lookupId === 'string' &&
+        typeof (item as SavedCard).name === 'string' &&
+        typeof (item as SavedCard).market === 'string' &&
+        typeof (item as SavedCard).viewedAt === 'string',
+    );
+  } catch {
+    return [];
+  }
+}
+
+function toSavedCardFromCandidate(candidate: CandidateCard, market: Market): SavedCard {
+  return {
+    lookupId: candidate.identityId ?? candidate.cardId,
+    name: candidate.name,
+    market,
+    language: candidate.language,
+    setCode: candidate.setCode,
+    number: candidate.number,
+    variant: candidate.variant,
+    imageUrl: candidate.imageUrl,
+    viewedAt: new Date().toISOString(),
+  };
+}
+
+function toSavedCardFromIdentity(card: CardIdentity, market: Market): SavedCard {
+  return {
+    lookupId: card.id,
+    name: card.name,
+    market,
+    language: card.language,
+    setCode: card.setCode,
+    number: card.collectorNumber,
+    variant: card.variant,
+    imageUrl: card.imageUrl,
+    viewedAt: new Date().toISOString(),
+  };
+}
+
+function withPrice(base: SavedCard, price: PriceResponse): SavedCard {
+  return {
+    ...base,
+    viewedAt: new Date().toISOString(),
+    lastPrice: {
+      currency: price.currency,
+      low: price.low,
+      high: price.high,
+      source: price.source,
+      fetchedAt: price.fetchedAt,
+    },
+  };
+}
+
+function upsertByLookupId(items: SavedCard[], item: SavedCard, limit?: number): SavedCard[] {
+  const next = [item, ...items.filter((saved) => saved.lookupId !== item.lookupId)];
+  return limit ? next.slice(0, limit) : next;
+}
 
 function toUserErrorMessage(error: string): string {
   const lowered = error.toLowerCase();
@@ -34,6 +123,8 @@ function toUserErrorMessage(error: string): string {
 export default function HomePage() {
   const [market, setMarket] = useState<Market>('US');
   const [language, setLanguage] = useState<Language>('EN');
+  const [watchlist, setWatchlist] = useState<SavedCard[]>([]);
+  const [recentHistory, setRecentHistory] = useState<SavedCard[]>([]);
 
   const recognize = useRecognize({ apiBase: API_BASE, lowConfidenceThreshold: 0.5 });
   const price = usePrice({ apiBase: API_BASE });
@@ -45,13 +136,71 @@ export default function HomePage() {
   const hasManualActivity = cardSearch.hasSearched || cardSearch.manualResults.length > 0;
   const hasPrice = !!price.price;
 
+  useEffect(() => {
+    try {
+      const storedWatchlist = parseSavedCards(globalThis.localStorage.getItem(WATCHLIST_STORAGE_KEY));
+      const storedRecent = parseSavedCards(globalThis.localStorage.getItem(RECENT_STORAGE_KEY));
+      setWatchlist(storedWatchlist);
+      setRecentHistory(storedRecent);
+    } catch {
+      setWatchlist([]);
+      setRecentHistory([]);
+    }
+  }, []);
+
+  function persistWatchlist(next: SavedCard[]) {
+    setWatchlist(next);
+    try {
+      globalThis.localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // no-op: keep in-memory state when storage is unavailable
+    }
+  }
+
+  function persistRecentHistory(next: SavedCard[]) {
+    setRecentHistory(next);
+    try {
+      globalThis.localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // no-op: keep in-memory state when storage is unavailable
+    }
+  }
+
+  function isWatchlistedById(lookupId: string): boolean {
+    return watchlist.some((saved) => saved.lookupId === lookupId);
+  }
+
+  function toggleWatchlist(item: SavedCard) {
+    const exists = isWatchlistedById(item.lookupId);
+    if (exists) {
+      persistWatchlist(watchlist.filter((saved) => saved.lookupId !== item.lookupId));
+      return;
+    }
+    persistWatchlist(upsertByLookupId(watchlist, item));
+  }
+
+  async function fetchAndTrackPrice(item: SavedCard) {
+    const fetched = await price.fetchPrice(item.lookupId, market);
+    if (!fetched) return;
+    const nextRecent = upsertByLookupId(recentHistory, withPrice(item, fetched), RECENT_LIMIT);
+    persistRecentHistory(nextRecent);
+  }
+
   async function handleRecognize(preview: string) {
     price.clearPrice();
     await recognize.recognize(preview, market, language);
   }
 
-  async function handleGetPrice(cardId: string) {
-    await price.fetchPrice(cardId, market);
+  async function handleGetCandidatePrice(candidate: CandidateCard) {
+    await fetchAndTrackPrice(toSavedCardFromCandidate(candidate, market));
+  }
+
+  async function handleGetManualCardPrice(card: CardIdentity) {
+    await fetchAndTrackPrice(toSavedCardFromIdentity(card, market));
+  }
+
+  async function handleGetSavedCardPrice(item: SavedCard) {
+    await fetchAndTrackPrice({ ...item, market });
   }
 
   return (
@@ -107,11 +256,13 @@ export default function HomePage() {
         topCandidates={recognize.topCandidates}
         selected={recognize.selected}
         isLowConfidence={recognize.isLowConfidence}
+        isWatchlisted={(candidate) => isWatchlistedById(candidate.identityId ?? candidate.cardId)}
+        onToggleWatchlist={(candidate) => toggleWatchlist(toSavedCardFromCandidate(candidate, market))}
         onSelect={(candidate) => {
           recognize.selectCandidate(candidate);
           price.clearPrice();
         }}
-        onGetPrice={handleGetPrice}
+        onGetPrice={handleGetCandidatePrice}
       />
 
       <ManualSearchPriceSection
@@ -134,8 +285,85 @@ export default function HomePage() {
         onToggleShowAllManual={() =>
           cardSearch.setShowAllManualResults(!cardSearch.showAllManualResults)
         }
-        onGetPrice={handleGetPrice}
+        isWatchlisted={(card) => isWatchlistedById(card.id)}
+        onToggleWatchlist={(card) => toggleWatchlist(toSavedCardFromIdentity(card, market))}
+        onGetPrice={handleGetManualCardPrice}
       />
+
+      <section className="panel">
+        <h2>Watchlist</h2>
+        {watchlist.length === 0 ? (
+          <p className="muted" style={{ marginTop: 10 }}>
+            No cards in watchlist yet. Add cards from candidates or manual search.
+          </p>
+        ) : (
+          <ul className="card-list">
+            {watchlist.map((item) => (
+              <li key={item.lookupId} className="entity-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ minWidth: 220 }}>
+                    <div style={{ fontWeight: 600 }}>{item.name}</div>
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      {item.market} / {item.language ?? '-'} / {item.setCode ?? '-'} / {item.number ?? '-'} /{' '}
+                      {item.variant ?? '-'}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>
+                    <button type="button" onClick={() => handleGetSavedCardPrice(item)}>
+                      Get Price
+                    </button>
+                    <button className="ghost" type="button" onClick={() => toggleWatchlist(item)}>
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="panel">
+        <h2>Recent Price Checks</h2>
+        {recentHistory.length === 0 ? (
+          <p className="muted" style={{ marginTop: 10 }}>
+            No recent checks yet. Prices fetched from candidates/manual search will appear here.
+          </p>
+        ) : (
+          <ul className="card-list">
+            {recentHistory.map((item) => (
+              <li key={item.lookupId} className="entity-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ minWidth: 220 }}>
+                    <div style={{ fontWeight: 600 }}>{item.name}</div>
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      Last checked: {item.viewedAt}
+                    </div>
+                    {item.lastPrice && (
+                      <div className="muted" style={{ fontSize: 12 }}>
+                        {item.lastPrice.currency} low {item.lastPrice.low ?? '-'} / high{' '}
+                        {item.lastPrice.high ?? '-'} ({item.lastPrice.source})
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>
+                    <button type="button" onClick={() => handleGetSavedCardPrice(item)}>
+                      Recheck Price
+                    </button>
+                    <button
+                      className="ghost"
+                      type="button"
+                      onClick={() => toggleWatchlist({ ...item, market })}
+                    >
+                      {isWatchlistedById(item.lookupId) ? 'Remove Watchlist' : 'Add Watchlist'}
+                    </button>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <footer className="muted" style={{ marginTop: 24, fontSize: 12 }}>
         Tip: Better photos and clear card boundaries usually improve OCR confidence.
