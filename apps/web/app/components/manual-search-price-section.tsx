@@ -16,7 +16,9 @@ type ManualSearchPriceSectionProps = {
   onSearch: (input: CardSearchInput) => Promise<void> | void;
   onSelectManual: (card: CardIdentity) => void;
   onToggleShowAllManual: () => void;
-  onGetPrice: (cardId: string) => void;
+  isWatchlisted: (card: CardIdentity) => boolean;
+  onToggleWatchlist: (card: CardIdentity) => void;
+  onGetPrice: (card: CardIdentity) => void;
 };
 
 export function ManualSearchPriceSection({
@@ -31,6 +33,8 @@ export function ManualSearchPriceSection({
   onSearch,
   onSelectManual,
   onToggleShowAllManual,
+  isWatchlisted,
+  onToggleWatchlist,
   onGetPrice,
 }: ManualSearchPriceSectionProps) {
   const manualNameId = 'manual-name';
@@ -195,8 +199,15 @@ export function ManualSearchPriceSection({
                       >
                         Select
                       </button>
-                      <button onClick={() => onGetPrice(card.id)}>
+                      <button onClick={() => onGetPrice(card)}>
                         Get Price
+                      </button>
+                      <button
+                        className="ghost"
+                        type="button"
+                        onClick={() => onToggleWatchlist(card)}
+                      >
+                        {isWatchlisted(card) ? 'Remove Watchlist' : 'Add Watchlist'}
                       </button>
                     </div>
                   </div>

@@ -13,7 +13,7 @@ export function usePrice({ apiBase }: UsePriceParams) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function fetchPrice(cardId: string, market: Market) {
+  async function fetchPrice(cardId: string, market: Market): Promise<PriceResponse | null> {
     setLoading(true);
     setError(null);
     try {
@@ -23,9 +23,11 @@ export function usePrice({ apiBase }: UsePriceParams) {
       if (!res.ok) throw new Error(`price failed: ${res.status}`);
       const data = (await res.json()) as PriceResponse;
       setPrice(data);
+      return data;
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : 'unknown error';
       setError(message);
+      return null;
     } finally {
       setLoading(false);
     }
