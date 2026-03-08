@@ -2,7 +2,7 @@
 
 import type { Language, Market } from '@pokecard/shared';
 import type { CandidateCard, CardIdentity, PriceResponse } from '@pokecard/shared';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CandidatesSection } from './components/candidates-section';
 import { ManualSearchPriceSection } from './components/manual-search-price-section';
 import { UploadCameraCropSection } from './components/upload-camera-crop-section';
@@ -15,6 +15,8 @@ const WATCHLIST_STORAGE_KEY = 'pokecard:watchlist:v1';
 const RECENT_STORAGE_KEY = 'pokecard:recent:v1';
 const RECENT_LIMIT = 10;
 
+type WatchlistSort = 'newest' | 'name-asc';
+
 type SavedCard = {
   lookupId: string;
   name: string;
@@ -25,6 +27,7 @@ type SavedCard = {
   variant?: string;
   imageUrl?: string;
   viewedAt: string;
+  goalPrice?: number;
   lastPrice?: {
     currency: string;
     low: number | null;
@@ -100,6 +103,18 @@ function upsertByLookupId(items: SavedCard[], item: SavedCard, limit?: number): 
   return limit ? next.slice(0, limit) : next;
 }
 
+function replaceByLookupId(items: SavedCard[], item: SavedCard): SavedCard[] {
+  return items.map((saved) => (saved.lookupId === item.lookupId ? item : saved));
+}
+
+function parseGoalPriceInput(raw: string): number | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  const next = Number(trimmed);
+  if (!Number.isFinite(next) || next < 0) return undefined;
+  return next;
+}
+
 function toUserErrorMessage(error: string): string {
   const lowered = error.toLowerCase();
   if (lowered.includes('failed to fetch') || lowered.includes('err_connection_refused')) {
@@ -125,6 +140,7 @@ export default function HomePage() {
   const [language, setLanguage] = useState<Language>('EN');
   const [watchlist, setWatchlist] = useState<SavedCard[]>([]);
   const [recentHistory, setRecentHistory] = useState<SavedCard[]>([]);
+  const [watchlistSort, setWatchlistSort] = useState<WatchlistSort>('newest');
 
   const recognize = useRecognize({ apiBase: API_BASE, lowConfidenceThreshold: 0.5 });
   const price = usePrice({ apiBase: API_BASE });
@@ -135,6 +151,19 @@ export default function HomePage() {
   const hasRecognition = recognize.candidates.length > 0;
   const hasManualActivity = cardSearch.hasSearched || cardSearch.manualResults.length > 0;
   const hasPrice = !!price.price;
+  const sortedWatchlist = useMemo(() => {
+    const next = [...watchlist];
+    if (watchlistSort === 'name-asc') {
+      next.sort((a, b) => a.name.localeCompare(b.name));
+      return next;
+    }
+    next.sort((a, b) => {
+      const timeDiff = new Date(b.viewedAt).getTime() - new Date(a.viewedAt).getTime();
+      if (timeDiff !== 0) return timeDiff;
+      return a.name.localeCompare(b.name);
+    });
+    return next;
+  }, [watchlist, watchlistSort]);
 
   useEffect(() => {
     try {
@@ -179,11 +208,23 @@ export default function HomePage() {
     persistWatchlist(upsertByLookupId(watchlist, item));
   }
 
+  function setWatchlistGoalPrice(lookupId: string, raw: string) {
+    const goalPrice = parseGoalPriceInput(raw);
+    const target = watchlist.find((saved) => saved.lookupId === lookupId);
+    if (!target) return;
+    const nextItem = { ...target, goalPrice };
+    persistWatchlist(replaceByLookupId(watchlist, nextItem));
+  }
+
   async function fetchAndTrackPrice(item: SavedCard) {
     const fetched = await price.fetchPrice(item.lookupId, market);
     if (!fetched) return;
-    const nextRecent = upsertByLookupId(recentHistory, withPrice(item, fetched), RECENT_LIMIT);
+    const pricedItem = withPrice(item, fetched);
+    const nextRecent = upsertByLookupId(recentHistory, pricedItem, RECENT_LIMIT);
     persistRecentHistory(nextRecent);
+    if (isWatchlistedById(item.lookupId)) {
+      persistWatchlist(replaceByLookupId(watchlist, pricedItem));
+    }
   }
 
   async function handleRecognize(preview: string) {
@@ -291,14 +332,27 @@ export default function HomePage() {
       />
 
       <section className="panel">
-        <h2>Watchlist</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <h2 style={{ margin: 0 }}>Watchlist</h2>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+            Sort
+            <select
+              value={watchlistSort}
+              onChange={(event) => setWatchlistSort(event.target.value as WatchlistSort)}
+              aria-label="Watchlist sort"
+            >
+              <option value="newest">Recently added</option>
+              <option value="name-asc">Name (A-Z)</option>
+            </select>
+          </label>
+        </div>
         {watchlist.length === 0 ? (
           <p className="muted" style={{ marginTop: 10 }}>
             No cards in watchlist yet. Add cards from candidates or manual search.
           </p>
         ) : (
           <ul className="card-list">
-            {watchlist.map((item) => (
+            {sortedWatchlist.map((item) => (
               <li key={item.lookupId} className="entity-card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                   <div style={{ minWidth: 220 }}>
@@ -306,6 +360,34 @@ export default function HomePage() {
                     <div className="muted" style={{ fontSize: 12 }}>
                       {item.market} / {item.language ?? '-'} / {item.setCode ?? '-'} / {item.number ?? '-'} /{' '}
                       {item.variant ?? '-'}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                        Target Price
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          inputMode="decimal"
+                          defaultValue={item.goalPrice ?? ''}
+                          onBlur={(event) => setWatchlistGoalPrice(item.lookupId, event.target.value)}
+                          aria-label={`Target price for ${item.name}`}
+                          style={{ width: 120 }}
+                        />
+                      </label>
+                      {typeof item.goalPrice === 'number' && item.lastPrice && (
+                        <span
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: item.lastPrice.low !== null && item.lastPrice.low <= item.goalPrice ? '#0f5132' : '#7a2e0e',
+                          }}
+                        >
+                          {item.lastPrice.low !== null && item.lastPrice.low <= item.goalPrice
+                            ? 'Target reached'
+                            : 'Above target'}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>
