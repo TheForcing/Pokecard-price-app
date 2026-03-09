@@ -34,6 +34,7 @@ type SavedCard = {
     high: number | null;
     source: string;
     fetchedAt: string;
+    previousLow?: number | null;
   };
 };
 
@@ -84,7 +85,7 @@ function toSavedCardFromIdentity(card: CardIdentity, market: Market): SavedCard 
   };
 }
 
-function withPrice(base: SavedCard, price: PriceResponse): SavedCard {
+function withPrice(base: SavedCard, price: PriceResponse, previousLow?: number | null): SavedCard {
   return {
     ...base,
     viewedAt: new Date().toISOString(),
@@ -94,6 +95,7 @@ function withPrice(base: SavedCard, price: PriceResponse): SavedCard {
       high: price.high,
       source: price.source,
       fetchedAt: price.fetchedAt,
+      previousLow,
     },
   };
 }
@@ -113,6 +115,19 @@ function parseGoalPriceInput(raw: string): number | undefined {
   const next = Number(trimmed);
   if (!Number.isFinite(next) || next < 0) return undefined;
   return next;
+}
+
+function getLowPriceDiff(lastPrice?: SavedCard['lastPrice']): number | null {
+  if (!lastPrice) return null;
+  if (lastPrice.low === null) return null;
+  if (typeof lastPrice.previousLow !== 'number') return null;
+  return lastPrice.low - lastPrice.previousLow;
+}
+
+function formatLowPriceDiff(diff: number): string {
+  if (diff === 0) return 'Low unchanged';
+  const sign = diff > 0 ? '+' : '-';
+  return `Low ${sign}${Math.abs(diff).toFixed(2)}`;
 }
 
 function toUserErrorMessage(error: string): string {
@@ -219,7 +234,11 @@ export default function HomePage() {
   async function fetchAndTrackPrice(item: SavedCard) {
     const fetched = await price.fetchPrice(item.lookupId, market);
     if (!fetched) return;
-    const pricedItem = withPrice(item, fetched);
+    const previousPrice =
+      item.lastPrice ??
+      recentHistory.find((saved) => saved.lookupId === item.lookupId)?.lastPrice ??
+      watchlist.find((saved) => saved.lookupId === item.lookupId)?.lastPrice;
+    const pricedItem = withPrice(item, fetched, previousPrice?.low ?? undefined);
     const nextRecent = upsertByLookupId(recentHistory, pricedItem, RECENT_LIMIT);
     persistRecentHistory(nextRecent);
     if (isWatchlistedById(item.lookupId)) {
@@ -361,6 +380,14 @@ export default function HomePage() {
                       {item.market} / {item.language ?? '-'} / {item.setCode ?? '-'} / {item.number ?? '-'} /{' '}
                       {item.variant ?? '-'}
                     </div>
+                    {item.lastPrice && (
+                      <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                        {item.lastPrice.currency} low {item.lastPrice.low ?? '-'} / high {item.lastPrice.high ?? '-'}
+                        {' ('}
+                        {item.lastPrice.source}
+                        {')'}
+                      </div>
+                    )}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                       <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
                         Target Price
@@ -388,6 +415,21 @@ export default function HomePage() {
                             : 'Above target'}
                         </span>
                       )}
+                      {(() => {
+                        const lowDiff = getLowPriceDiff(item.lastPrice);
+                        if (lowDiff === null) return null;
+                        return (
+                          <span
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 600,
+                              color: lowDiff <= 0 ? '#0f5132' : '#7a2e0e',
+                            }}
+                          >
+                            {formatLowPriceDiff(lowDiff)}
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>
@@ -427,6 +469,15 @@ export default function HomePage() {
                         {item.lastPrice.high ?? '-'} ({item.lastPrice.source})
                       </div>
                     )}
+                    {(() => {
+                      const lowDiff = getLowPriceDiff(item.lastPrice);
+                      if (lowDiff === null) return null;
+                      return (
+                        <div style={{ fontSize: 12, fontWeight: 600, color: lowDiff <= 0 ? '#0f5132' : '#7a2e0e' }}>
+                          {formatLowPriceDiff(lowDiff)}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>
                     <button type="button" onClick={() => handleGetSavedCardPrice(item)}>

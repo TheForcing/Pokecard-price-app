@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import HomePage from '../app/page';
 
 const WATCHLIST_STORAGE_KEY = 'pokecard:watchlist:v1';
+const RECENT_STORAGE_KEY = 'pokecard:recent:v1';
 
 describe('HomePage', () => {
   beforeEach(() => {
@@ -35,5 +36,50 @@ describe('HomePage', () => {
     render(<HomePage />);
 
     expect(screen.getByLabelText(/target price for pikachu/i)).toBeInTheDocument();
+  });
+
+  it('renders low price change badge in watchlist and recent sections', () => {
+    window.localStorage.setItem(
+      WATCHLIST_STORAGE_KEY,
+      JSON.stringify([
+        {
+          lookupId: 'card-123',
+          name: 'Pikachu',
+          market: 'US',
+          viewedAt: '2026-03-09T00:00:00.000Z',
+          lastPrice: {
+            currency: 'USD',
+            low: 8,
+            high: 12,
+            source: 'TCGPLAYER',
+            fetchedAt: '2026-03-09T00:00:00.000Z',
+            previousLow: 10,
+          },
+        },
+      ]),
+    );
+    window.localStorage.setItem(
+      RECENT_STORAGE_KEY,
+      JSON.stringify([
+        {
+          lookupId: 'card-123',
+          name: 'Pikachu',
+          market: 'US',
+          viewedAt: '2026-03-09T00:00:00.000Z',
+          lastPrice: {
+            currency: 'USD',
+            low: 8,
+            high: 12,
+            source: 'TCGPLAYER',
+            fetchedAt: '2026-03-09T00:00:00.000Z',
+            previousLow: 10,
+          },
+        },
+      ]),
+    );
+
+    render(<HomePage />);
+
+    expect(screen.getAllByText('Low -2.00')).toHaveLength(2);
   });
 });
