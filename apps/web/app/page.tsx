@@ -13,7 +13,9 @@ import { useRecognize } from './hooks/use-recognize';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:4000';
 const WATCHLIST_STORAGE_KEY = 'pokecard:watchlist:v1';
 const RECENT_STORAGE_KEY = 'pokecard:recent:v1';
+const COMPARE_STORAGE_KEY = 'pokecard:compare:v1';
 const RECENT_LIMIT = 10;
+const COMPARE_LIMIT = 3;
 
 type WatchlistSort = 'newest' | 'name-asc';
 
@@ -155,6 +157,7 @@ export default function HomePage() {
   const [language, setLanguage] = useState<Language>('EN');
   const [watchlist, setWatchlist] = useState<SavedCard[]>([]);
   const [recentHistory, setRecentHistory] = useState<SavedCard[]>([]);
+  const [compareCards, setCompareCards] = useState<SavedCard[]>([]);
   const [watchlistSort, setWatchlistSort] = useState<WatchlistSort>('newest');
 
   const recognize = useRecognize({ apiBase: API_BASE, lowConfidenceThreshold: 0.5 });
@@ -166,6 +169,8 @@ export default function HomePage() {
   const hasRecognition = recognize.candidates.length > 0;
   const hasManualActivity = cardSearch.hasSearched || cardSearch.manualResults.length > 0;
   const hasPrice = !!price.price;
+  const selectedCandidate = recognize.selected;
+  const selectedManualCard = cardSearch.manualSelected;
   const sortedWatchlist = useMemo(() => {
     const next = [...watchlist];
     if (watchlistSort === 'name-asc') {
@@ -184,11 +189,14 @@ export default function HomePage() {
     try {
       const storedWatchlist = parseSavedCards(globalThis.localStorage.getItem(WATCHLIST_STORAGE_KEY));
       const storedRecent = parseSavedCards(globalThis.localStorage.getItem(RECENT_STORAGE_KEY));
+      const storedCompare = parseSavedCards(globalThis.localStorage.getItem(COMPARE_STORAGE_KEY));
       setWatchlist(storedWatchlist);
       setRecentHistory(storedRecent);
+      setCompareCards(storedCompare.slice(0, COMPARE_LIMIT));
     } catch {
       setWatchlist([]);
       setRecentHistory([]);
+      setCompareCards([]);
     }
   }, []);
 
@@ -205,6 +213,16 @@ export default function HomePage() {
     setRecentHistory(next);
     try {
       globalThis.localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // no-op: keep in-memory state when storage is unavailable
+    }
+  }
+
+  function persistCompareCards(next: SavedCard[]) {
+    const limited = next.slice(0, COMPARE_LIMIT);
+    setCompareCards(limited);
+    try {
+      globalThis.localStorage.setItem(COMPARE_STORAGE_KEY, JSON.stringify(limited));
     } catch {
       // no-op: keep in-memory state when storage is unavailable
     }
@@ -231,6 +249,14 @@ export default function HomePage() {
     persistWatchlist(replaceByLookupId(watchlist, nextItem));
   }
 
+  function addToCompare(item: SavedCard) {
+    persistCompareCards(upsertByLookupId(compareCards, { ...item, market }, COMPARE_LIMIT));
+  }
+
+  function removeFromCompare(lookupId: string) {
+    persistCompareCards(compareCards.filter((saved) => saved.lookupId !== lookupId));
+  }
+
   async function fetchAndTrackPrice(item: SavedCard) {
     const fetched = await price.fetchPrice(item.lookupId, market);
     if (!fetched) return;
@@ -241,6 +267,9 @@ export default function HomePage() {
     const pricedItem = withPrice(item, fetched, previousPrice?.low ?? undefined);
     const nextRecent = upsertByLookupId(recentHistory, pricedItem, RECENT_LIMIT);
     persistRecentHistory(nextRecent);
+    if (compareCards.some((saved) => saved.lookupId === item.lookupId)) {
+      persistCompareCards(replaceByLookupId(compareCards, pricedItem));
+    }
     if (isWatchlistedById(item.lookupId)) {
       persistWatchlist(replaceByLookupId(watchlist, pricedItem));
     }
@@ -325,6 +354,17 @@ export default function HomePage() {
         onGetPrice={handleGetCandidatePrice}
       />
 
+      {selectedCandidate && (
+        <section className="panel" style={{ marginTop: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <span className="muted">Selected candidate: {selectedCandidate.name}</span>
+            <button type="button" onClick={() => addToCompare(toSavedCardFromCandidate(selectedCandidate, market))}>
+              Add Selected to Compare
+            </button>
+          </div>
+        </section>
+      )}
+
       <ManualSearchPriceSection
         language={language}
         manualResults={cardSearch.manualResults}
@@ -349,6 +389,65 @@ export default function HomePage() {
         onToggleWatchlist={(card) => toggleWatchlist(toSavedCardFromIdentity(card, market))}
         onGetPrice={handleGetManualCardPrice}
       />
+
+      {selectedManualCard && (
+        <section className="panel" style={{ marginTop: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <span className="muted">Selected manual card: {selectedManualCard.name}</span>
+            <button type="button" onClick={() => addToCompare(toSavedCardFromIdentity(selectedManualCard, market))}>
+              Add Manual Selection to Compare
+            </button>
+          </div>
+        </section>
+      )}
+
+      <section className="panel">
+        <h2>Compare Cards (up to 3)</h2>
+        {compareCards.length === 0 ? (
+          <p className="muted" style={{ marginTop: 10 }}>
+            Select a candidate or manual result, then add it to compare.
+          </p>
+        ) : (
+          <div
+            style={{
+              marginTop: 10,
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 12,
+            }}
+          >
+            {compareCards.map((item) => (
+              <article key={item.lookupId} className="entity-card">
+                <div style={{ fontWeight: 600 }}>{item.name}</div>
+                <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                  {item.market} / {item.language ?? '-'} / {item.setCode ?? '-'} / {item.number ?? '-'} /{' '}
+                  {item.variant ?? '-'}
+                </div>
+                {item.lastPrice ? (
+                  <div style={{ marginTop: 8, fontSize: 12 }}>
+                    <div>
+                      {item.lastPrice.currency} low {item.lastPrice.low ?? '-'} / high {item.lastPrice.high ?? '-'}
+                    </div>
+                    <div className="muted">{item.lastPrice.source}</div>
+                  </div>
+                ) : (
+                  <div className="muted" style={{ marginTop: 8, fontSize: 12 }}>
+                    Price not loaded yet.
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                  <button type="button" onClick={() => handleGetSavedCardPrice(item)}>
+                    Get Price
+                  </button>
+                  <button className="ghost" type="button" onClick={() => removeFromCompare(item.lookupId)}>
+                    Remove
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section className="panel">
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
