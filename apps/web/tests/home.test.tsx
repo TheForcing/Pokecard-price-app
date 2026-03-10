@@ -6,6 +6,7 @@ import HomePage from '../app/page';
 
 const WATCHLIST_STORAGE_KEY = 'pokecard:watchlist:v1';
 const RECENT_STORAGE_KEY = 'pokecard:recent:v1';
+const COMPARE_STORAGE_KEY = 'pokecard:compare:v1';
 
 describe('HomePage', () => {
   beforeEach(() => {
@@ -81,5 +82,38 @@ describe('HomePage', () => {
     render(<HomePage />);
 
     expect(screen.getAllByText('Low -2.00')).toHaveLength(2);
+  });
+
+  it('renders compare cards section from local storage', () => {
+    window.localStorage.setItem(
+      COMPARE_STORAGE_KEY,
+      JSON.stringify([
+        {
+          lookupId: 'card-1',
+          name: 'Pikachu',
+          market: 'US',
+          viewedAt: '2026-03-09T00:00:00.000Z',
+          lastPrice: {
+            currency: 'USD',
+            low: 10,
+            high: 14,
+            source: 'TCGPLAYER',
+            fetchedAt: '2026-03-09T00:00:00.000Z',
+          },
+        },
+        {
+          lookupId: 'card-2',
+          name: 'Charizard',
+          market: 'US',
+          viewedAt: '2026-03-09T00:00:00.000Z',
+        },
+      ]),
+    );
+
+    render(<HomePage />);
+
+    expect(screen.getByRole('heading', { name: /compare cards/i })).toBeInTheDocument();
+    expect(screen.getByText('Pikachu')).toBeInTheDocument();
+    expect(screen.getByText('Charizard')).toBeInTheDocument();
   });
 });

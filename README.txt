@@ -87,6 +87,7 @@ Release readiness check (practical gate)
   - pnpm release:check
 
 Operational notes
+- Project layout reference: `docs/project-structure.md`
 - See docs/cache-policy.md for cache key, TTL, invalidation, and observability policy.
 - Redis-backed cache is recommended for multi-instance deployments to avoid per-instance cache divergence.
 - See docs/runbooks/github-required-checks.md for branch protection required checks.
