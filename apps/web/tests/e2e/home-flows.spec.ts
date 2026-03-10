@@ -64,9 +64,8 @@ test.describe('Home flows', () => {
     });
 
     await page.getByRole('button', { name: 'Recognize' }).click();
-    await expect(page.getByText('Pikachu')).toBeVisible();
-
     const candidatesSection = page.locator('section').filter({ hasText: 'Candidates' });
+    await expect(candidatesSection.getByText('1. Pikachu')).toBeVisible();
     await candidatesSection.getByRole('button', { name: 'Select' }).first().click();
     await candidatesSection.getByRole('button', { name: 'Get Price' }).first().click();
 
@@ -131,9 +130,8 @@ test.describe('Home flows', () => {
 
     await page.getByLabel('Name').fill('Charizard');
     await page.getByRole('button', { name: 'Search' }).click();
-    await expect(page.getByText('Charizard')).toBeVisible();
-
     const manualSection = page.locator('section').filter({ hasText: 'Manual Search' });
+    await expect(manualSection.getByText('Charizard')).toBeVisible();
     await manualSection.getByRole('button', { name: 'Select' }).first().click();
     await manualSection.getByRole('button', { name: 'Get Price' }).first().click();
 
