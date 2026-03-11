@@ -1,6 +1,6 @@
 'use client';
 
-import type { Language, Market } from '@pokecard/shared';
+import type { CardVariant, Language, Market } from '@pokecard/shared';
 import type { CandidateCard, CardIdentity, PriceResponse } from '@pokecard/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { CandidatesSection } from './components/candidates-section';
@@ -16,6 +16,16 @@ const RECENT_STORAGE_KEY = 'pokecard:recent:v1';
 const COMPARE_STORAGE_KEY = 'pokecard:compare:v1';
 const RECENT_LIMIT = 10;
 const COMPARE_LIMIT = 3;
+const MANUAL_VARIANTS: readonly CardVariant[] = [
+  'NORMAL',
+  'HOLOFOIL',
+  'REVERSE_HOLOFOIL',
+  'FULL_ART',
+  'ALT_ART',
+  'SECRET',
+  'PROMO',
+  'OTHER',
+];
 
 type WatchlistSort = 'newest' | 'name-asc';
 
@@ -152,6 +162,22 @@ function toUserErrorMessage(error: string): string {
   return `Something went wrong (${error}). Please retry.`;
 }
 
+function parseMarketParam(value: string | null): Market | null {
+  if (value === 'US' || value === 'JP' || value === 'KR') return value;
+  return null;
+}
+
+function parseLanguageParam(value: string | null): Language | null {
+  if (value === 'EN' || value === 'JA' || value === 'KO') return value;
+  return null;
+}
+
+function parseVariantParam(value: string | null): CardVariant | '' {
+  if (!value) return '';
+  if (MANUAL_VARIANTS.includes(value as CardVariant)) return value as CardVariant;
+  return '';
+}
+
 export default function HomePage() {
   const [market, setMarket] = useState<Market>('US');
   const [language, setLanguage] = useState<Language>('EN');
@@ -159,6 +185,11 @@ export default function HomePage() {
   const [recentHistory, setRecentHistory] = useState<SavedCard[]>([]);
   const [compareCards, setCompareCards] = useState<SavedCard[]>([]);
   const [watchlistSort, setWatchlistSort] = useState<WatchlistSort>('newest');
+  const [manualQuery, setManualQuery] = useState('');
+  const [manualSetCode, setManualSetCode] = useState('');
+  const [manualNumber, setManualNumber] = useState('');
+  const [manualVariant, setManualVariant] = useState<CardVariant | ''>('NORMAL');
+  const [isUrlStateInitialized, setIsUrlStateInitialized] = useState(false);
 
   const recognize = useRecognize({ apiBase: API_BASE, lowConfidenceThreshold: 0.5 });
   const price = usePrice({ apiBase: API_BASE });
@@ -184,6 +215,51 @@ export default function HomePage() {
     });
     return next;
   }, [watchlist, watchlistSort]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(globalThis.location.search);
+    const initialMarket = parseMarketParam(params.get('market'));
+    const initialLanguage = parseLanguageParam(params.get('language'));
+    const initialQuery = params.get('q')?.trim() ?? '';
+    const initialSetCode = params.get('setCode')?.trim() ?? '';
+    const initialNumber = params.get('number')?.trim() ?? '';
+    const initialVariant = parseVariantParam(params.get('variant'));
+
+    if (initialMarket) setMarket(initialMarket);
+    if (initialLanguage) setLanguage(initialLanguage);
+    if (initialQuery) setManualQuery(initialQuery);
+    if (initialSetCode) setManualSetCode(initialSetCode);
+    if (initialNumber) setManualNumber(initialNumber);
+    if (initialVariant) setManualVariant(initialVariant);
+
+    setIsUrlStateInitialized(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isUrlStateInitialized) return;
+    const params = new URLSearchParams(globalThis.location.search);
+    params.set('market', market);
+    params.set('language', language);
+
+    if (manualQuery.trim()) params.set('q', manualQuery.trim());
+    else params.delete('q');
+
+    if (manualSetCode.trim()) params.set('setCode', manualSetCode.trim());
+    else params.delete('setCode');
+
+    if (manualNumber.trim()) params.set('number', manualNumber.trim());
+    else params.delete('number');
+
+    if (manualVariant) params.set('variant', manualVariant);
+    else params.delete('variant');
+
+    const nextSearch = params.toString();
+    const currentSearch = globalThis.location.search.replace(/^\?/, '');
+    if (nextSearch !== currentSearch) {
+      const nextUrl = `${globalThis.location.pathname}${nextSearch ? `?${nextSearch}` : ''}`;
+      globalThis.history.replaceState(null, '', nextUrl);
+    }
+  }, [isUrlStateInitialized, market, language, manualQuery, manualSetCode, manualNumber, manualVariant]);
 
   useEffect(() => {
     try {
@@ -374,6 +450,14 @@ export default function HomePage() {
         hasSearched={cardSearch.hasSearched}
         manualLoading={cardSearch.loading}
         price={price.price}
+        manualQuery={manualQuery}
+        manualSetCode={manualSetCode}
+        manualNumber={manualNumber}
+        manualVariant={manualVariant}
+        onManualQueryChange={setManualQuery}
+        onManualSetCodeChange={setManualSetCode}
+        onManualNumberChange={setManualNumber}
+        onManualVariantChange={setManualVariant}
         onSearch={async (input) => {
           price.clearPrice();
           await cardSearch.searchCards(input);

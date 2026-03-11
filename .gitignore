@@ -4,6 +4,9 @@ node_modules
 .DS_Store
 .env
 .env.*
+*.log
+logs/*.log
+apps/*.log
 coverage
 apps/api/dist
 apps/api/node_modules
