@@ -1,7 +1,6 @@
 'use client';
 
 import type { CardIdentity, CardVariant, Language, PriceResponse } from '@pokecard/shared';
-import { useState } from 'react';
 import type { CardSearchInput } from '../hooks/use-card-search';
 
 type ManualSearchPriceSectionProps = {
@@ -13,6 +12,14 @@ type ManualSearchPriceSectionProps = {
   hasSearched: boolean;
   manualLoading: boolean;
   price: PriceResponse | null;
+  manualQuery: string;
+  manualSetCode: string;
+  manualNumber: string;
+  manualVariant: CardVariant | '';
+  onManualQueryChange: (value: string) => void;
+  onManualSetCodeChange: (value: string) => void;
+  onManualNumberChange: (value: string) => void;
+  onManualVariantChange: (value: CardVariant | '') => void;
   onSearch: (input: CardSearchInput) => Promise<void> | void;
   onSelectManual: (card: CardIdentity) => void;
   onToggleShowAllManual: () => void;
@@ -30,6 +37,14 @@ export function ManualSearchPriceSection({
   hasSearched,
   manualLoading,
   price,
+  manualQuery,
+  manualSetCode,
+  manualNumber,
+  manualVariant,
+  onManualQueryChange,
+  onManualSetCodeChange,
+  onManualNumberChange,
+  onManualVariantChange,
   onSearch,
   onSelectManual,
   onToggleShowAllManual,
@@ -41,11 +56,6 @@ export function ManualSearchPriceSection({
   const manualSetCodeId = 'manual-set-code';
   const manualNumberId = 'manual-number';
   const manualVariantId = 'manual-variant';
-
-  const [manualQuery, setManualQuery] = useState('');
-  const [manualSetCode, setManualSetCode] = useState('');
-  const [manualNumber, setManualNumber] = useState('');
-  const [manualVariant, setManualVariant] = useState<CardVariant | ''>('NORMAL');
 
   function formatPrice(value: number): string {
     return `${price?.currency ?? ''} ${value}`.trim();
@@ -70,7 +80,7 @@ export function ManualSearchPriceSection({
             <input
               id={manualNameId}
               value={manualQuery}
-              onChange={(event) => setManualQuery(event.target.value)}
+              onChange={(event) => onManualQueryChange(event.target.value)}
               placeholder="Pikachu"
             />
           </label>
@@ -82,7 +92,7 @@ export function ManualSearchPriceSection({
             <input
               id={manualSetCodeId}
               value={manualSetCode}
-              onChange={(event) => setManualSetCode(event.target.value)}
+              onChange={(event) => onManualSetCodeChange(event.target.value)}
               placeholder="swsh4"
             />
           </label>
@@ -94,7 +104,7 @@ export function ManualSearchPriceSection({
             <input
               id={manualNumberId}
               value={manualNumber}
-              onChange={(event) => setManualNumber(event.target.value)}
+              onChange={(event) => onManualNumberChange(event.target.value)}
               placeholder="043"
             />
           </label>
@@ -106,7 +116,7 @@ export function ManualSearchPriceSection({
             <select
               id={manualVariantId}
               value={manualVariant}
-              onChange={(event) => setManualVariant(event.target.value as CardVariant | '')}
+              onChange={(event) => onManualVariantChange(event.target.value as CardVariant | '')}
             >
               <option value="">Any</option>
               <option value="NORMAL">Normal</option>
