@@ -7,6 +7,7 @@ import HomePage from '../app/page';
 const WATCHLIST_STORAGE_KEY = 'pokecard:watchlist:v1';
 const RECENT_STORAGE_KEY = 'pokecard:recent:v1';
 const COMPARE_STORAGE_KEY = 'pokecard:compare:v1';
+const SEARCH_PRESETS_STORAGE_KEY = 'pokecard:search-presets:v1';
 
 describe('HomePage', () => {
   beforeEach(() => {
@@ -153,6 +154,65 @@ describe('HomePage', () => {
       expect(params.get('setCode')).toBe('sv1');
       expect(params.get('number')).toBe('133');
       expect(params.get('variant')).toBe('PROMO');
+    });
+  });
+
+  it('saves current filters as a preset', async () => {
+    render(<HomePage />);
+
+    fireEvent.change(screen.getByLabelText('Market'), { target: { value: 'JP' } });
+    fireEvent.change(screen.getByLabelText('Card Language'), { target: { value: 'JA' } });
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Mew' } });
+    fireEvent.change(screen.getByLabelText('Set Code'), { target: { value: 'sv2' } });
+    fireEvent.change(screen.getByLabelText('Number'), { target: { value: '125' } });
+    fireEvent.change(screen.getByLabelText('Variant'), { target: { value: 'HOLOFOIL' } });
+    fireEvent.change(screen.getByLabelText('Preset Name'), { target: { value: 'JP Mew Holo' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Preset' }));
+
+    await waitFor(() => {
+      const raw = window.localStorage.getItem(SEARCH_PRESETS_STORAGE_KEY);
+      expect(raw).toBeTruthy();
+      const presets = JSON.parse(raw ?? '[]') as Array<Record<string, string>>;
+      expect(presets).toHaveLength(1);
+      expect(presets[0].name).toBe('JP Mew Holo');
+      expect(presets[0].market).toBe('JP');
+      expect(presets[0].language).toBe('JA');
+      expect(presets[0].manualQuery).toBe('Mew');
+      expect(presets[0].manualSetCode).toBe('sv2');
+      expect(presets[0].manualNumber).toBe('125');
+      expect(presets[0].manualVariant).toBe('HOLOFOIL');
+    });
+  });
+
+  it('applies a saved preset to filters', async () => {
+    window.localStorage.setItem(
+      SEARCH_PRESETS_STORAGE_KEY,
+      JSON.stringify([
+        {
+          id: 'preset-1',
+          name: 'KR Promo',
+          market: 'KR',
+          language: 'KO',
+          manualQuery: 'Eevee',
+          manualSetCode: 'sv1',
+          manualNumber: '133',
+          manualVariant: 'PROMO',
+        },
+      ]),
+    );
+
+    render(<HomePage />);
+
+    fireEvent.change(screen.getByLabelText('Saved Presets'), { target: { value: 'preset-1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply Preset' }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Market')).toHaveValue('KR');
+      expect(screen.getByLabelText('Card Language')).toHaveValue('KO');
+      expect(screen.getByLabelText('Name')).toHaveValue('Eevee');
+      expect(screen.getByLabelText('Set Code')).toHaveValue('sv1');
+      expect(screen.getByLabelText('Number')).toHaveValue('133');
+      expect(screen.getByLabelText('Variant')).toHaveValue('PROMO');
     });
   });
 });

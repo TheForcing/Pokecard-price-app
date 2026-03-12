@@ -14,6 +14,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:4000';
 const WATCHLIST_STORAGE_KEY = 'pokecard:watchlist:v1';
 const RECENT_STORAGE_KEY = 'pokecard:recent:v1';
 const COMPARE_STORAGE_KEY = 'pokecard:compare:v1';
+const SEARCH_PRESETS_STORAGE_KEY = 'pokecard:search-presets:v1';
 const RECENT_LIMIT = 10;
 const COMPARE_LIMIT = 3;
 const MANUAL_VARIANTS: readonly CardVariant[] = [
@@ -28,6 +29,17 @@ const MANUAL_VARIANTS: readonly CardVariant[] = [
 ];
 
 type WatchlistSort = 'newest' | 'name-asc';
+
+type SearchPreset = {
+  id: string;
+  name: string;
+  market: Market;
+  language: Language;
+  manualQuery: string;
+  manualSetCode: string;
+  manualNumber: string;
+  manualVariant: CardVariant | '';
+};
 
 type SavedCard = {
   lookupId: string;
@@ -162,6 +174,30 @@ function toUserErrorMessage(error: string): string {
   return `Something went wrong (${error}). Please retry.`;
 }
 
+function parseSearchPresets(raw: string | null): SearchPreset[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item): item is SearchPreset =>
+        !!item &&
+        typeof item === 'object' &&
+        typeof (item as SearchPreset).id === 'string' &&
+        typeof (item as SearchPreset).name === 'string' &&
+        typeof (item as SearchPreset).market === 'string' &&
+        typeof (item as SearchPreset).language === 'string' &&
+        typeof (item as SearchPreset).manualQuery === 'string' &&
+        typeof (item as SearchPreset).manualSetCode === 'string' &&
+        typeof (item as SearchPreset).manualNumber === 'string' &&
+        (typeof (item as SearchPreset).manualVariant === 'string' ||
+          (item as SearchPreset).manualVariant === ''),
+    );
+  } catch {
+    return [];
+  }
+}
+
 function parseMarketParam(value: string | null): Market | null {
   if (value === 'US' || value === 'JP' || value === 'KR') return value;
   return null;
@@ -189,6 +225,9 @@ export default function HomePage() {
   const [manualSetCode, setManualSetCode] = useState('');
   const [manualNumber, setManualNumber] = useState('');
   const [manualVariant, setManualVariant] = useState<CardVariant | ''>('NORMAL');
+  const [presetNameInput, setPresetNameInput] = useState('');
+  const [savedPresets, setSavedPresets] = useState<SearchPreset[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState('');
   const [isUrlStateInitialized, setIsUrlStateInitialized] = useState(false);
 
   const recognize = useRecognize({ apiBase: API_BASE, lowConfidenceThreshold: 0.5 });
@@ -266,15 +305,72 @@ export default function HomePage() {
       const storedWatchlist = parseSavedCards(globalThis.localStorage.getItem(WATCHLIST_STORAGE_KEY));
       const storedRecent = parseSavedCards(globalThis.localStorage.getItem(RECENT_STORAGE_KEY));
       const storedCompare = parseSavedCards(globalThis.localStorage.getItem(COMPARE_STORAGE_KEY));
+      const storedSearchPresets = parseSearchPresets(globalThis.localStorage.getItem(SEARCH_PRESETS_STORAGE_KEY));
       setWatchlist(storedWatchlist);
       setRecentHistory(storedRecent);
       setCompareCards(storedCompare.slice(0, COMPARE_LIMIT));
+      setSavedPresets(storedSearchPresets);
     } catch {
       setWatchlist([]);
       setRecentHistory([]);
       setCompareCards([]);
+      setSavedPresets([]);
     }
   }, []);
+
+  function persistSearchPresets(next: SearchPreset[]) {
+    setSavedPresets(next);
+    try {
+      globalThis.localStorage.setItem(SEARCH_PRESETS_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // no-op: keep in-memory state when storage is unavailable
+    }
+  }
+
+  function saveCurrentPreset() {
+    const trimmedName = presetNameInput.trim();
+    if (!trimmedName) return;
+    const nextPreset: SearchPreset = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name: trimmedName,
+      market,
+      language,
+      manualQuery,
+      manualSetCode,
+      manualNumber,
+      manualVariant,
+    };
+    const existingIndex = savedPresets.findIndex((preset) => preset.name.toLowerCase() === trimmedName.toLowerCase());
+    let nextPresets = savedPresets;
+    if (existingIndex >= 0) {
+      nextPresets = [...savedPresets];
+      nextPresets[existingIndex] = { ...nextPreset, id: savedPresets[existingIndex].id };
+      setSelectedPresetId(savedPresets[existingIndex].id);
+    } else {
+      nextPresets = [nextPreset, ...savedPresets];
+      setSelectedPresetId(nextPreset.id);
+    }
+    persistSearchPresets(nextPresets);
+    setPresetNameInput('');
+  }
+
+  function applySelectedPreset() {
+    const preset = savedPresets.find((item) => item.id === selectedPresetId);
+    if (!preset) return;
+    setMarket(preset.market);
+    setLanguage(preset.language);
+    setManualQuery(preset.manualQuery);
+    setManualSetCode(preset.manualSetCode);
+    setManualNumber(preset.manualNumber);
+    setManualVariant(preset.manualVariant);
+  }
+
+  function deleteSelectedPreset() {
+    if (!selectedPresetId) return;
+    const next = savedPresets.filter((item) => item.id !== selectedPresetId);
+    persistSearchPresets(next);
+    setSelectedPresetId('');
+  }
 
   function persistWatchlist(next: SavedCard[]) {
     setWatchlist(next);
@@ -454,10 +550,18 @@ export default function HomePage() {
         manualSetCode={manualSetCode}
         manualNumber={manualNumber}
         manualVariant={manualVariant}
+        presetNameInput={presetNameInput}
+        selectedPresetId={selectedPresetId}
+        savedPresets={savedPresets}
         onManualQueryChange={setManualQuery}
         onManualSetCodeChange={setManualSetCode}
         onManualNumberChange={setManualNumber}
         onManualVariantChange={setManualVariant}
+        onPresetNameInputChange={setPresetNameInput}
+        onSelectedPresetIdChange={setSelectedPresetId}
+        onSavePreset={saveCurrentPreset}
+        onApplyPreset={applySelectedPreset}
+        onDeletePreset={deleteSelectedPreset}
         onSearch={async (input) => {
           price.clearPrice();
           await cardSearch.searchCards(input);

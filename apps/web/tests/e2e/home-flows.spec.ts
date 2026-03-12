@@ -128,7 +128,7 @@ test.describe('Home flows', () => {
       page.getByText('Card recognition failed. Please retake the photo with clearer card boundaries.'),
     ).toBeVisible();
 
-    await page.getByLabel('Name').fill('Charizard');
+    await page.getByLabel('Name', { exact: true }).fill('Charizard');
     await page.getByRole('button', { name: 'Search' }).click();
     const manualSection = page.locator('section').filter({ hasText: 'Manual Search' });
     await expect(manualSection.getByText('Charizard')).toBeVisible();
