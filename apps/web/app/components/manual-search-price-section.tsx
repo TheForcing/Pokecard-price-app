@@ -1,6 +1,6 @@
 'use client';
 
-import type { CardIdentity, CardVariant, Language, PriceResponse } from '@pokecard/shared';
+import type { CardIdentity, CardVariant, Language, Market, PriceResponse } from '@pokecard/shared';
 import type { CardSearchInput } from '../hooks/use-card-search';
 
 type ManualSearchPriceSectionProps = {
@@ -16,16 +16,35 @@ type ManualSearchPriceSectionProps = {
   manualSetCode: string;
   manualNumber: string;
   manualVariant: CardVariant | '';
+  presetNameInput: string;
+  selectedPresetId: string;
+  savedPresets: SearchPreset[];
   onManualQueryChange: (value: string) => void;
   onManualSetCodeChange: (value: string) => void;
   onManualNumberChange: (value: string) => void;
   onManualVariantChange: (value: CardVariant | '') => void;
+  onPresetNameInputChange: (value: string) => void;
+  onSelectedPresetIdChange: (value: string) => void;
+  onSavePreset: () => void;
+  onApplyPreset: () => void;
+  onDeletePreset: () => void;
   onSearch: (input: CardSearchInput) => Promise<void> | void;
   onSelectManual: (card: CardIdentity) => void;
   onToggleShowAllManual: () => void;
   isWatchlisted: (card: CardIdentity) => boolean;
   onToggleWatchlist: (card: CardIdentity) => void;
   onGetPrice: (card: CardIdentity) => void;
+};
+
+type SearchPreset = {
+  id: string;
+  name: string;
+  market: Market;
+  language: Language;
+  manualQuery: string;
+  manualSetCode: string;
+  manualNumber: string;
+  manualVariant: CardVariant | '';
 };
 
 export function ManualSearchPriceSection({
@@ -41,10 +60,18 @@ export function ManualSearchPriceSection({
   manualSetCode,
   manualNumber,
   manualVariant,
+  presetNameInput,
+  selectedPresetId,
+  savedPresets,
   onManualQueryChange,
   onManualSetCodeChange,
   onManualNumberChange,
   onManualVariantChange,
+  onPresetNameInputChange,
+  onSelectedPresetIdChange,
+  onSavePreset,
+  onApplyPreset,
+  onDeletePreset,
   onSearch,
   onSelectManual,
   onToggleShowAllManual,
@@ -71,6 +98,40 @@ export function ManualSearchPriceSection({
         <p className="muted" style={{ marginTop: 4, fontSize: 12 }}>
           Tip: same Pokemon name can have different prices per variant (Normal/Holo/Reverse Holo).
         </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 10, alignItems: 'end' }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            Preset Name
+            <input
+              value={presetNameInput}
+              onChange={(event) => onPresetNameInputChange(event.target.value)}
+              placeholder="e.g. JP Holo"
+            />
+          </label>
+          <button type="button" className="secondary" onClick={onSavePreset} disabled={!presetNameInput.trim()}>
+            Save Preset
+          </button>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            Saved Presets
+            <select
+              value={selectedPresetId}
+              onChange={(event) => onSelectedPresetIdChange(event.target.value)}
+              aria-label="Saved Presets"
+            >
+              <option value="">Select preset</option>
+              {savedPresets.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.name} ({preset.market}/{preset.language})
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="button" onClick={onApplyPreset} disabled={!selectedPresetId}>
+            Apply Preset
+          </button>
+          <button type="button" className="ghost" onClick={onDeletePreset} disabled={!selectedPresetId}>
+            Delete Preset
+          </button>
+        </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 10 }}>
           <label
             htmlFor={manualNameId}
