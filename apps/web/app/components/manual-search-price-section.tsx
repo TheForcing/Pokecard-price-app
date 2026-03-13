@@ -16,6 +16,8 @@ type ManualSearchPriceSectionProps = {
   manualSetCode: string;
   manualNumber: string;
   manualVariant: CardVariant | '';
+  suggestions: CardIdentity[];
+  suggestionsLoading: boolean;
   presetNameInput: string;
   selectedPresetId: string;
   savedPresets: SearchPreset[];
@@ -60,6 +62,8 @@ export function ManualSearchPriceSection({
   manualSetCode,
   manualNumber,
   manualVariant,
+  suggestions,
+  suggestionsLoading,
   presetNameInput,
   selectedPresetId,
   savedPresets,
@@ -83,6 +87,7 @@ export function ManualSearchPriceSection({
   const manualSetCodeId = 'manual-set-code';
   const manualNumberId = 'manual-number';
   const manualVariantId = 'manual-variant';
+  const manualNameSuggestionId = 'manual-name-suggestions';
 
   function formatPrice(value: number): string {
     return `${price?.currency ?? ''} ${value}`.trim();
@@ -143,7 +148,24 @@ export function ManualSearchPriceSection({
               value={manualQuery}
               onChange={(event) => onManualQueryChange(event.target.value)}
               placeholder="Pikachu"
+              autoComplete="off"
+              list={manualNameSuggestionId}
+              aria-describedby={suggestionsLoading ? 'manual-name-suggestion-loading' : undefined}
             />
+            <datalist id={manualNameSuggestionId}>
+              {suggestions.map((suggestion) => (
+                <option
+                  key={suggestion.id}
+                  value={suggestion.name}
+                  label={`${suggestion.name} (${suggestion.setCode} #${suggestion.collectorNumber}, ${suggestion.variant})`}
+                />
+              ))}
+            </datalist>
+            {suggestionsLoading && (
+              <span id="manual-name-suggestion-loading" className="muted" style={{ fontSize: 12 }}>
+                Loading suggestions...
+              </span>
+            )}
           </label>
           <label
             htmlFor={manualSetCodeId}
@@ -207,7 +229,17 @@ export function ManualSearchPriceSection({
           </button>
         </div>
 
-        {manualResults.length === 0 ? (
+        {manualLoading ? (
+          <ul className="card-list" aria-label="Manual search loading skeleton" aria-busy="true">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <li key={index} className="entity-card skeleton-row">
+                <div className="skeleton-block skeleton-title" />
+                <div className="skeleton-block" />
+                <div className="skeleton-block skeleton-short" />
+              </li>
+            ))}
+          </ul>
+        ) : manualResults.length === 0 ? (
           <p className="muted" style={{ marginTop: 10 }}>
             {hasSearched
               ? 'No matching cards found. Try name-only search first, then add set/number.'

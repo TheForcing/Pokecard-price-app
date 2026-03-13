@@ -73,4 +73,53 @@ describe('useCardSearch', () => {
       expect(result.current.error).toContain('search failed: 503');
     });
   });
+
+  it('fetches name suggestions for autocomplete', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            id: 'id_suggestion_1',
+            name: 'Pikachu',
+            language: 'EN',
+            setCode: 'sv1',
+            collectorNumber: '001',
+            variant: 'NORMAL',
+          },
+        ],
+      }),
+    } as Response);
+
+    const { result } = renderHook(() => useCardSearch({ apiBase: 'http://localhost:4000' }));
+
+    await act(async () => {
+      await result.current.fetchSuggestions('Pika', 'EN');
+    });
+
+    await waitFor(() => {
+      expect(result.current.suggestionsLoading).toBe(false);
+      expect(result.current.suggestions).toHaveLength(1);
+      expect(result.current.suggestions[0].name).toBe('Pikachu');
+    });
+
+    const calledUrl = String(fetchSpy.mock.calls[0][0]);
+    expect(calledUrl).toContain('/cards/search?');
+    expect(calledUrl).toContain('q=Pika');
+    expect(calledUrl).toContain('language=EN');
+    expect(calledUrl).toContain('limit=5');
+  });
+
+  it('clears suggestions when query is too short', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const { result } = renderHook(() => useCardSearch({ apiBase: 'http://localhost:4000' }));
+
+    await act(async () => {
+      await result.current.fetchSuggestions('P', 'EN');
+    });
+
+    expect(result.current.suggestions).toEqual([]);
+    expect(result.current.suggestionsLoading).toBe(false);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
 });

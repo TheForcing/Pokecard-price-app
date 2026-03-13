@@ -1,7 +1,7 @@
 'use client';
 
 import type { CardIdentity, CardVariant, Language } from '@pokecard/shared';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { fetchWithTimeout } from './fetch-with-timeout';
 
 type UseCardSearchParams = {
@@ -18,10 +18,12 @@ export type CardSearchInput = {
 
 export function useCardSearch({ apiBase }: UseCardSearchParams) {
   const [manualResults, setManualResults] = useState<CardIdentity[]>([]);
+  const [suggestions, setSuggestions] = useState<CardIdentity[]>([]);
   const [manualSelected, setManualSelected] = useState<CardIdentity | null>(null);
   const [showAllManualResults, setShowAllManualResults] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const displayedManualResults = useMemo(
@@ -29,7 +31,7 @@ export function useCardSearch({ apiBase }: UseCardSearchParams) {
     [manualResults, showAllManualResults],
   );
 
-  async function searchCards(input: CardSearchInput) {
+  const searchCards = useCallback(async (input: CardSearchInput) => {
     setLoading(true);
     setError(null);
     setHasSearched(true);
@@ -55,7 +57,38 @@ export function useCardSearch({ apiBase }: UseCardSearchParams) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [apiBase]);
+
+  const fetchSuggestions = useCallback(async (query: string, language: Language) => {
+    const trimmedQuery = query.trim();
+    if (trimmedQuery.length < 2) {
+      setSuggestions([]);
+      setSuggestionsLoading(false);
+      return;
+    }
+    setSuggestionsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set('q', trimmedQuery);
+      params.set('language', language);
+      params.set('limit', '5');
+
+      const res = await fetchWithTimeout(`${apiBase}/cards/search?${params.toString()}`);
+      if (!res.ok) throw new Error(`search failed: ${res.status}`);
+
+      const data = (await res.json()) as { items: CardIdentity[] };
+      setSuggestions(data.items ?? []);
+    } catch {
+      setSuggestions([]);
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  }, [apiBase]);
+
+  const clearSuggestions = useCallback(() => {
+    setSuggestions([]);
+    setSuggestionsLoading(false);
+  }, []);
 
   function clearError() {
     setError(null);
@@ -68,8 +101,12 @@ export function useCardSearch({ apiBase }: UseCardSearchParams) {
     showAllManualResults,
     hasSearched,
     loading,
+    suggestions,
+    suggestionsLoading,
     error,
     searchCards,
+    fetchSuggestions,
+    clearSuggestions,
     setManualSelected,
     setShowAllManualResults,
     clearError,
