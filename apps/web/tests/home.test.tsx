@@ -1,6 +1,6 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import HomePage from '../app/page';
 
@@ -13,6 +13,11 @@ describe('HomePage', () => {
   beforeEach(() => {
     window.localStorage.clear();
     window.history.replaceState({}, '', '/');
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('renders the title', () => {
@@ -214,5 +219,47 @@ describe('HomePage', () => {
       expect(screen.getByLabelText('Number')).toHaveValue('133');
       expect(screen.getByLabelText('Variant')).toHaveValue('PROMO');
     });
+  });
+
+  it('shows manual search skeleton while search is loading', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise<Response>(() => {}));
+
+    render(<HomePage />);
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Charizard' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+
+    expect(screen.getByLabelText('Manual search loading skeleton')).toBeInTheDocument();
+  });
+
+  it('requests autocomplete suggestions while typing name', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            id: 'id_1',
+            name: 'Pikachu',
+            language: 'EN',
+            setCode: 'sv1',
+            collectorNumber: '001',
+            variant: 'NORMAL',
+          },
+        ],
+      }),
+    } as Response);
+
+    render(<HomePage />);
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Pika' } });
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalled();
+    }, { timeout: 2000 });
+
+    const calledUrl = String(fetchSpy.mock.calls[0][0]);
+    expect(calledUrl).toContain('/cards/search?');
+    expect(calledUrl).toContain('q=Pika');
+    expect(calledUrl).toContain('limit=5');
   });
 });

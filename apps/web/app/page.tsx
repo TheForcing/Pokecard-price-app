@@ -233,6 +233,8 @@ export default function HomePage() {
   const recognize = useRecognize({ apiBase: API_BASE, lowConfidenceThreshold: 0.5 });
   const price = usePrice({ apiBase: API_BASE });
   const cardSearch = useCardSearch({ apiBase: API_BASE });
+  const fetchSuggestions = cardSearch.fetchSuggestions;
+  const clearSuggestions = cardSearch.clearSuggestions;
 
   const error = recognize.error ?? price.error ?? cardSearch.error;
   const userError = error ? toUserErrorMessage(error) : null;
@@ -299,6 +301,22 @@ export default function HomePage() {
       globalThis.history.replaceState(null, '', nextUrl);
     }
   }, [isUrlStateInitialized, market, language, manualQuery, manualSetCode, manualNumber, manualVariant]);
+
+  useEffect(() => {
+    const trimmedQuery = manualQuery.trim();
+    if (trimmedQuery.length < 2) {
+      clearSuggestions();
+      return;
+    }
+
+    const timeoutId = globalThis.setTimeout(() => {
+      void fetchSuggestions(trimmedQuery, language);
+    }, 250);
+
+    return () => {
+      globalThis.clearTimeout(timeoutId);
+    };
+  }, [manualQuery, language, fetchSuggestions, clearSuggestions]);
 
   useEffect(() => {
     try {
@@ -550,6 +568,8 @@ export default function HomePage() {
         manualSetCode={manualSetCode}
         manualNumber={manualNumber}
         manualVariant={manualVariant}
+        suggestions={cardSearch.suggestions}
+        suggestionsLoading={cardSearch.suggestionsLoading}
         presetNameInput={presetNameInput}
         selectedPresetId={selectedPresetId}
         savedPresets={savedPresets}
