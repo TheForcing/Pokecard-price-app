@@ -96,15 +96,14 @@ export function ManualSearchPriceSection({
   return (
     <>
       <section className="panel">
-        <h2>Manual Search</h2>
-        <p className="muted" style={{ marginTop: 6, fontSize: 12 }}>
-          Use this when OCR is uncertain. Search by name + set/number + variant.
-        </p>
-        <p className="muted" style={{ marginTop: 4, fontSize: 12 }}>
-          Tip: same Pokemon name can have different prices per variant (Normal/Holo/Reverse Holo).
-        </p>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 10, alignItems: 'end' }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div className="panel-header">
+          <h2>Manual Search</h2>
+          <span className="section-kicker">Fallback flow</span>
+        </div>
+        <p className="panel-note">Use this when OCR is uncertain. Search by name + set/number + variant.</p>
+        <p className="panel-note">Tip: the same Pokemon can have different prices per variant.</p>
+        <div className="form-row-wrap" style={{ alignItems: 'end' }}>
+          <label className="field field-grow">
             Preset Name
             <input
               value={presetNameInput}
@@ -115,7 +114,7 @@ export function ManualSearchPriceSection({
           <button type="button" className="secondary" onClick={onSavePreset} disabled={!presetNameInput.trim()}>
             Save Preset
           </button>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label className="field field-grow">
             Saved Presets
             <select
               value={selectedPresetId}
@@ -137,11 +136,8 @@ export function ManualSearchPriceSection({
             Delete Preset
           </button>
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 10 }}>
-          <label
-            htmlFor={manualNameId}
-            style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
-          >
+        <div className="form-row-wrap">
+          <label htmlFor={manualNameId} className="field field-grow">
             Name
             <input
               id={manualNameId}
@@ -167,10 +163,7 @@ export function ManualSearchPriceSection({
               </span>
             )}
           </label>
-          <label
-            htmlFor={manualSetCodeId}
-            style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
-          >
+          <label htmlFor={manualSetCodeId} className="field field-sm">
             Set Code
             <input
               id={manualSetCodeId}
@@ -179,10 +172,7 @@ export function ManualSearchPriceSection({
               placeholder="swsh4"
             />
           </label>
-          <label
-            htmlFor={manualNumberId}
-            style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
-          >
+          <label htmlFor={manualNumberId} className="field field-sm">
             Number
             <input
               id={manualNumberId}
@@ -191,10 +181,7 @@ export function ManualSearchPriceSection({
               placeholder="043"
             />
           </label>
-          <label
-            htmlFor={manualVariantId}
-            style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
-          >
+          <label htmlFor={manualVariantId} className="field field-md">
             Variant
             <select
               id={manualVariantId}
@@ -253,14 +240,7 @@ export function ManualSearchPriceSection({
                   key={card.id}
                   className={`entity-card ${manualSelected?.id === card.id ? 'selected' : ''}`}
                 >
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      gap: 12,
-                      flexWrap: 'wrap',
-                    }}
-                  >
+                  <div className="card-main-row">
                     <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 220 }}>
                       <div className="thumb">
                         {card.imageUrl ? (
@@ -276,8 +256,11 @@ export function ManualSearchPriceSection({
                       </div>
                       <div>
                         <div style={{ fontWeight: 600 }}>{card.name}</div>
-                        <div className="muted" style={{ fontSize: 12 }}>
-                          {card.language} / {card.setCode} / {card.collectorNumber} / {card.variant}
+                        <div className="meta-row">
+                          <span className="meta-pill">{card.language}</span>
+                          <span className="meta-pill">{card.setCode}</span>
+                          <span className="meta-pill">#{card.collectorNumber}</span>
+                          <span className="meta-pill">{card.variant}</span>
                         </div>
                         {card.setName && (
                           <div className="muted" style={{ fontSize: 12 }}>
@@ -286,14 +269,7 @@ export function ManualSearchPriceSection({
                         )}
                       </div>
                     </div>
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 8,
-                        alignItems: 'end',
-                      }}
-                    >
+                    <div className="card-actions-col">
                       <button
                         className="secondary"
                         onClick={() => {
