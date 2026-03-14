@@ -546,7 +546,7 @@ export default function HomePage() {
 
       {selectedCandidate && (
         <section className="panel" style={{ marginTop: 12 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div className="panel-header">
             <span className="muted">Selected candidate: {selectedCandidate.name}</span>
             <button type="button" onClick={() => addToCompare(toSavedCardFromCandidate(selectedCandidate, market))}>
               Add Selected to Compare
@@ -600,7 +600,7 @@ export default function HomePage() {
 
       {selectedManualCard && (
         <section className="panel" style={{ marginTop: 12 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div className="panel-header">
             <span className="muted">Selected manual card: {selectedManualCard.name}</span>
             <button type="button" onClick={() => addToCompare(toSavedCardFromIdentity(selectedManualCard, market))}>
               Add Manual Selection to Compare
@@ -610,7 +610,10 @@ export default function HomePage() {
       )}
 
       <section className="panel">
-        <h2>Compare Cards (up to 3)</h2>
+        <div className="panel-header">
+          <h2>Compare Cards (up to 3)</h2>
+          <span className="section-kicker">Quick compare</span>
+        </div>
         {compareCards.length === 0 ? (
           <p className="muted" style={{ marginTop: 10 }}>
             Select a candidate or manual result, then add it to compare.
@@ -627,9 +630,12 @@ export default function HomePage() {
             {compareCards.map((item) => (
               <article key={item.lookupId} className="entity-card">
                 <div style={{ fontWeight: 600 }}>{item.name}</div>
-                <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                  {item.market} / {item.language ?? '-'} / {item.setCode ?? '-'} / {item.number ?? '-'} /{' '}
-                  {item.variant ?? '-'}
+                <div className="meta-row">
+                  <span className="meta-pill">{item.market}</span>
+                  <span className="meta-pill">{item.language ?? '-'}</span>
+                  <span className="meta-pill">{item.setCode ?? '-'}</span>
+                  <span className="meta-pill">#{item.number ?? '-'}</span>
+                  <span className="meta-pill">{item.variant ?? '-'}</span>
                 </div>
                 {item.lastPrice ? (
                   <div style={{ marginTop: 8, fontSize: 12 }}>
@@ -658,7 +664,7 @@ export default function HomePage() {
       </section>
 
       <section className="panel">
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div className="panel-header">
           <h2 style={{ margin: 0 }}>Watchlist</h2>
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
             Sort
@@ -680,12 +686,15 @@ export default function HomePage() {
           <ul className="card-list">
             {sortedWatchlist.map((item) => (
               <li key={item.lookupId} className="entity-card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                  <div style={{ minWidth: 220 }}>
+                <div className="card-main-row">
+                  <div className="card-main-col">
                     <div style={{ fontWeight: 600 }}>{item.name}</div>
-                    <div className="muted" style={{ fontSize: 12 }}>
-                      {item.market} / {item.language ?? '-'} / {item.setCode ?? '-'} / {item.number ?? '-'} /{' '}
-                      {item.variant ?? '-'}
+                    <div className="meta-row">
+                      <span className="meta-pill">{item.market}</span>
+                      <span className="meta-pill">{item.language ?? '-'}</span>
+                      <span className="meta-pill">{item.setCode ?? '-'}</span>
+                      <span className="meta-pill">#{item.number ?? '-'}</span>
+                      <span className="meta-pill">{item.variant ?? '-'}</span>
                     </div>
                     {item.lastPrice && (
                       <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
@@ -711,11 +720,7 @@ export default function HomePage() {
                       </label>
                       {typeof item.goalPrice === 'number' && item.lastPrice && (
                         <span
-                          style={{
-                            fontSize: 12,
-                            fontWeight: 600,
-                            color: item.lastPrice.low !== null && item.lastPrice.low <= item.goalPrice ? '#0f5132' : '#7a2e0e',
-                          }}
+                          className={`status-pill ${item.lastPrice.low !== null && item.lastPrice.low <= item.goalPrice ? 'good' : 'warn'}`}
                         >
                           {item.lastPrice.low !== null && item.lastPrice.low <= item.goalPrice
                             ? 'Target reached'
@@ -726,20 +731,14 @@ export default function HomePage() {
                         const lowDiff = getLowPriceDiff(item.lastPrice);
                         if (lowDiff === null) return null;
                         return (
-                          <span
-                            style={{
-                              fontSize: 12,
-                              fontWeight: 600,
-                              color: lowDiff <= 0 ? '#0f5132' : '#7a2e0e',
-                            }}
-                          >
+                          <span className={`status-pill ${lowDiff <= 0 ? 'good' : 'warn'}`}>
                             {formatLowPriceDiff(lowDiff)}
                           </span>
                         );
                       })()}
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>
+                  <div className="card-actions-row">
                     <button type="button" onClick={() => handleGetSavedCardPrice(item)}>
                       Get Price
                     </button>
@@ -755,7 +754,10 @@ export default function HomePage() {
       </section>
 
       <section className="panel">
-        <h2>Recent Price Checks</h2>
+        <div className="panel-header">
+          <h2>Recent Price Checks</h2>
+          <span className="section-kicker">History</span>
+        </div>
         {recentHistory.length === 0 ? (
           <p className="muted" style={{ marginTop: 10 }}>
             No recent checks yet. Prices fetched from candidates/manual search will appear here.
@@ -764,8 +766,8 @@ export default function HomePage() {
           <ul className="card-list">
             {recentHistory.map((item) => (
               <li key={item.lookupId} className="entity-card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                  <div style={{ minWidth: 220 }}>
+                <div className="card-main-row">
+                  <div className="card-main-col">
                     <div style={{ fontWeight: 600 }}>{item.name}</div>
                     <div className="muted" style={{ fontSize: 12 }}>
                       Last checked: {item.viewedAt}
@@ -780,13 +782,13 @@ export default function HomePage() {
                       const lowDiff = getLowPriceDiff(item.lastPrice);
                       if (lowDiff === null) return null;
                       return (
-                        <div style={{ fontSize: 12, fontWeight: 600, color: lowDiff <= 0 ? '#0f5132' : '#7a2e0e' }}>
+                        <div className={`status-pill ${lowDiff <= 0 ? 'good' : 'warn'}`}>
                           {formatLowPriceDiff(lowDiff)}
                         </div>
                       );
                     })()}
                   </div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>
+                  <div className="card-actions-row">
                     <button type="button" onClick={() => handleGetSavedCardPrice(item)}>
                       Recheck Price
                     </button>
