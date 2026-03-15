@@ -334,11 +334,8 @@ export function UploadCameraCropSection({
 
   return (
     <>
-      <section className="panel" style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        <label
-          htmlFor={marketSelectId}
-          style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
-        >
+      <section className="panel panel-flex-wrap">
+        <label htmlFor={marketSelectId} className="field">
           Market
           <select
             id={marketSelectId}
@@ -351,10 +348,7 @@ export function UploadCameraCropSection({
           </select>
         </label>
 
-        <label
-          htmlFor={languageSelectId}
-          style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
-        >
+        <label htmlFor={languageSelectId} className="field">
           Card Language
           <select
             id={languageSelectId}
@@ -367,7 +361,7 @@ export function UploadCameraCropSection({
           </select>
         </label>
 
-        <label htmlFor={imageInputId} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <label htmlFor={imageInputId} className="field">
           Image
           <div className="file-picker">
             <input
@@ -377,7 +371,7 @@ export function UploadCameraCropSection({
               accept="image/*"
               capture="environment"
               onChange={(e) => onPick(e.target.files?.[0] ?? null)}
-              style={{ display: 'none' }}
+              className="hidden-input"
             />
             <button
               type="button"
@@ -392,7 +386,7 @@ export function UploadCameraCropSection({
           </div>
         </label>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div className="field">
           Crop
           <div className="action-row">
             <button
@@ -423,7 +417,7 @@ export function UploadCameraCropSection({
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div className="field">
           Camera
           <div className="action-row">
             <button
@@ -443,7 +437,7 @@ export function UploadCameraCropSection({
             </button>
           </div>
           {cameraError && (
-            <div id={cameraErrorId} role="alert" style={{ color: 'crimson', fontSize: 12 }}>
+            <div id={cameraErrorId} role="alert" className="danger-inline">
               {cameraError}
             </div>
           )}
@@ -454,56 +448,46 @@ export function UploadCameraCropSection({
             if (preview) onRecognize(preview);
           }}
           disabled={!preview || loading}
-          style={{ alignSelf: 'end' }}
+          className="align-self-end"
         >
           {loading ? 'Working…' : 'Recognize'}
         </button>
       </section>
 
       {loading && (
-        <p
-          className="muted"
-          role="status"
-          aria-live="polite"
-          style={{ marginTop: 8, fontSize: 12 }}
-        >
+        <p className="muted note-text" role="status" aria-live="polite">
           Processing image. This can take a few seconds; long requests are timed out automatically.
         </p>
       )}
 
       {qualityWarning && (
-        <p
-          id={qualityWarningId}
-          className="warn-text"
-          role="alert"
-          style={{ marginTop: 8, fontSize: 12 }}
-        >
+        <p id={qualityWarningId} className="warn-text note-text" role="alert">
           Quality check: {qualityWarning}
         </p>
       )}
       {imageMeta && (
-        <p className="muted" style={{ marginTop: 4, fontSize: 12 }}>
+        <p className="panel-note-tight">
           Image size: {imageMeta.width} x {imageMeta.height}
         </p>
       )}
 
       {cameraActive && (
-        <section style={{ marginTop: 12 }}>
+        <section className="panel-top-gap">
           <video
             ref={videoRef}
             autoPlay
             playsInline
             muted
-            style={{ width: '100%', maxWidth: 520, borderRadius: 12, border: '1px solid #ddd' }}
+            className="camera-preview"
           />
-          <canvas ref={canvasRef} style={{ display: 'none' }} />
+          <canvas ref={canvasRef} className="hidden-input" />
         </section>
       )}
 
       {cropMode && preview && (
-        <section className="panel" style={{ marginTop: 12 }}>
-          <h2 style={{ margin: 0, fontSize: 16 }}>Manual Crop</h2>
-          <p className="muted" style={{ marginTop: 6, fontSize: 12 }}>
+        <section className="panel panel-top-gap">
+          <h2 className="panel-subtitle">Manual Crop</h2>
+          <p className="inline-status muted">
             Drag to select the card area. Then apply crop.
           </p>
           <canvas
@@ -513,16 +497,9 @@ export function UploadCameraCropSection({
             onPointerUp={onCropPointerUp}
             onPointerLeave={onCropPointerUp}
             aria-label="Manual crop canvas"
-            style={{
-              width: '100%',
-              maxWidth: MAX_CROP_PREVIEW,
-              borderRadius: 10,
-              border: '1px solid #eee',
-              touchAction: 'none',
-              marginTop: 8,
-            }}
+            className="crop-canvas"
           />
-          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <div className="inline-button-row">
             <button type="button" onClick={applyManualCrop}>
               Apply Crop
             </button>
@@ -542,13 +519,13 @@ export function UploadCameraCropSection({
               id={cropMessageId}
               role="status"
               aria-live="polite"
-              style={{ marginTop: 6, fontSize: 12 }}
+              className="inline-status"
             >
               {cropMessage}
             </div>
           )}
           {autoCropFailed && (
-            <div role="alert" style={{ marginTop: 6, color: '#a04500', fontSize: 12 }}>
+            <div role="alert" className="warn-inline">
               Auto crop failed. Manual crop recommended.
             </div>
           )}
@@ -556,16 +533,16 @@ export function UploadCameraCropSection({
       )}
 
       <section className="panel">
-        <h2 style={{ margin: 0, fontSize: 16 }}>Preview</h2>
+        <h2 className="panel-subtitle">Preview</h2>
         {preview ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={preview}
             alt="preview"
-            style={{ width: '100%', marginTop: 10, borderRadius: 10 }}
+            className="preview-image"
           />
         ) : (
-          <p className="muted" style={{ marginTop: 10 }}>
+          <p className="muted empty-state-text">
             Pick an image to preview.
           </p>
         )}
