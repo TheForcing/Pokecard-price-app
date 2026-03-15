@@ -27,47 +27,32 @@ export function CandidatesSection({
     <section className="panel">
       <h2>Candidates</h2>
       {isLowConfidence && (
-        <p className="warn-text" style={{ marginTop: 8, fontSize: 12 }}>
+        <p className="warn-text note-text">
           Low confidence. Please verify the candidate.
         </p>
       )}
       {candidates.length === 0 ? (
-        <p className="muted" style={{ marginTop: 10 }}>
+        <p className="muted empty-state-text">
           Run recognize to see candidates.
         </p>
       ) : (
         <>
-          <p className="muted" style={{ marginTop: 8, fontSize: 12 }}>
+          <p className="muted note-text">
             Showing top 3 similar names.
           </p>
-          <ul className="card-list" style={{ marginTop: 10 }}>
+          <ul className="card-list">
             {topCandidates.map((candidate, index) => (
               <li
                 key={candidate.cardId}
                 className={`entity-card ${selected?.cardId === candidate.cardId ? 'selected' : ''}`}
               >
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    gap: 12,
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <div style={{ minWidth: 220 }}>
-                    <div style={{ fontWeight: 600 }}>
+                <div className="card-main-row">
+                  <div className="card-main-col">
+                    <div className="card-title">
                       {index + 1}. {candidate.name}
                     </div>
                   </div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 8,
-                      alignItems: 'end',
-                      marginLeft: 'auto',
-                    }}
-                  >
+                  <div className="card-actions-col">
                     <button
                       className="secondary"
                       type="button"

@@ -102,7 +102,7 @@ export function ManualSearchPriceSection({
         </div>
         <p className="panel-note">Use this when OCR is uncertain. Search by name + set/number + variant.</p>
         <p className="panel-note">Tip: the same Pokemon can have different prices per variant.</p>
-        <div className="form-row-wrap" style={{ alignItems: 'end' }}>
+        <div className="form-row-wrap form-row-wrap-end">
           <label className="field field-grow">
             Preset Name
             <input
@@ -158,7 +158,7 @@ export function ManualSearchPriceSection({
               ))}
             </datalist>
             {suggestionsLoading && (
-              <span id="manual-name-suggestion-loading" className="muted" style={{ fontSize: 12 }}>
+              <span id="manual-name-suggestion-loading" className="muted text-xs">
                 Loading suggestions...
               </span>
             )}
@@ -210,7 +210,7 @@ export function ManualSearchPriceSection({
                 language,
               })
             }
-            style={{ alignSelf: 'end' }}
+            className="align-self-end"
           >
             {manualLoading ? 'Searching…' : 'Search'}
           </button>
@@ -227,7 +227,7 @@ export function ManualSearchPriceSection({
             ))}
           </ul>
         ) : manualResults.length === 0 ? (
-          <p className="muted" style={{ marginTop: 10 }}>
+          <p className="muted empty-state-text">
             {hasSearched
               ? 'No matching cards found. Try name-only search first, then add set/number.'
               : 'No manual results yet.'}
@@ -241,21 +241,21 @@ export function ManualSearchPriceSection({
                   className={`entity-card ${manualSelected?.id === card.id ? 'selected' : ''}`}
                 >
                   <div className="card-main-row">
-                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 220 }}>
+                    <div className="card-media-row">
                       <div className="thumb">
                         {card.imageUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={card.imageUrl}
                             alt={card.name}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            className="thumb-img"
                           />
                         ) : (
                           'No image'
                         )}
                       </div>
                       <div>
-                        <div style={{ fontWeight: 600 }}>{card.name}</div>
+                        <div className="card-title">{card.name}</div>
                         <div className="meta-row">
                           <span className="meta-pill">{card.language}</span>
                           <span className="meta-pill">{card.setCode}</span>
@@ -263,7 +263,7 @@ export function ManualSearchPriceSection({
                           <span className="meta-pill">{card.variant}</span>
                         </div>
                         {card.setName && (
-                          <div className="muted" style={{ fontSize: 12 }}>
+                          <div className="muted text-xs">
                             {card.setName}
                           </div>
                         )}
@@ -295,10 +295,9 @@ export function ManualSearchPriceSection({
             </ul>
             {manualResults.length > 5 && (
               <button
-                className="ghost"
                 type="button"
                 onClick={onToggleShowAllManual}
-                style={{ marginTop: 8 }}
+                className="ghost top-gap-sm"
                 aria-expanded={showAllManualResults}
               >
                 {showAllManualResults ? 'Show top 5' : 'Show all'}
@@ -312,17 +311,17 @@ export function ManualSearchPriceSection({
         <h2>Price</h2>
         <div aria-live="polite" aria-atomic="true">
           {!price ? (
-            <p className="muted" style={{ marginTop: 10 }}>
+            <p className="muted empty-state-text">
               Select a candidate and click Get Price.
             </p>
           ) : (
             <div className="price-grid">
               <div className="price-card">
-                <div className="muted" style={{ fontSize: 12 }}>
+                <div className="muted text-xs">
                   Lowest Top 3 ({price.source})
                 </div>
                 {((price.lowTop3 ?? []).length > 0 || price.low != null) && (
-                  <ol style={{ margin: '8px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
+                  <ol className="top3-list">
                     {(price.lowTop3 ?? (price.low == null ? [] : [price.low])).map((value, index) => (
                       <li key={`${value}-${index}`}>{formatPrice(value)}</li>
                     ))}
@@ -331,11 +330,11 @@ export function ManualSearchPriceSection({
                 {(price.lowTop3 ?? []).length === 0 && price.low == null && <div className="price-value">-</div>}
               </div>
               <div className="price-card">
-                <div className="muted" style={{ fontSize: 12 }}>
+                <div className="muted text-xs">
                   Highest Top 3 ({price.source})
                 </div>
                 {((price.highTop3 ?? []).length > 0 || price.high != null || price.low != null) && (
-                  <ol style={{ margin: '8px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
+                  <ol className="top3-list">
                     {(price.highTop3 ??
                       (price.high == null ? (price.low == null ? [] : [price.low]) : [price.high])
                     ).map((value, index) => (
@@ -347,7 +346,7 @@ export function ManualSearchPriceSection({
                   <div className="price-value">-</div>
                 )}
               </div>
-              <div className="muted" style={{ gridColumn: '1 / -1', fontSize: 12 }}>
+              <div className="muted price-fetched-at">
                 fetchedAt: {price.fetchedAt}
               </div>
             </div>
