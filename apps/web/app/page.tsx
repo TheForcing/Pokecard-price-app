@@ -485,7 +485,7 @@ export default function HomePage() {
   return (
     <main className="app-shell">
       <section className="app-hero">
-        <h1 style={{ fontSize: 34, margin: 0 }}>PokéCard Price Finder</h1>
+        <h1 className="hero-title">PokéCard Price Finder</h1>
         <p>Upload a card image, verify recognition, then check live low/high market price.</p>
         <ol className="hero-steps" aria-label="Recommended mobile flow">
           <li>Choose Image (or camera), then crop if needed.</li>
@@ -545,7 +545,7 @@ export default function HomePage() {
       />
 
       {selectedCandidate && (
-        <section className="panel" style={{ marginTop: 12 }}>
+        <section className="panel panel-top-gap">
           <div className="panel-header">
             <span className="muted">Selected candidate: {selectedCandidate.name}</span>
             <button type="button" onClick={() => addToCompare(toSavedCardFromCandidate(selectedCandidate, market))}>
@@ -599,7 +599,7 @@ export default function HomePage() {
       />
 
       {selectedManualCard && (
-        <section className="panel" style={{ marginTop: 12 }}>
+        <section className="panel panel-top-gap">
           <div className="panel-header">
             <span className="muted">Selected manual card: {selectedManualCard.name}</span>
             <button type="button" onClick={() => addToCompare(toSavedCardFromIdentity(selectedManualCard, market))}>
@@ -615,21 +615,14 @@ export default function HomePage() {
           <span className="section-kicker">Quick compare</span>
         </div>
         {compareCards.length === 0 ? (
-          <p className="muted" style={{ marginTop: 10 }}>
+          <p className="muted empty-state-text">
             Select a candidate or manual result, then add it to compare.
           </p>
         ) : (
-          <div
-            style={{
-              marginTop: 10,
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: 12,
-            }}
-          >
+          <div className="compare-grid">
             {compareCards.map((item) => (
               <article key={item.lookupId} className="entity-card">
-                <div style={{ fontWeight: 600 }}>{item.name}</div>
+                <div className="card-title">{item.name}</div>
                 <div className="meta-row">
                   <span className="meta-pill">{item.market}</span>
                   <span className="meta-pill">{item.language ?? '-'}</span>
@@ -638,18 +631,18 @@ export default function HomePage() {
                   <span className="meta-pill">{item.variant ?? '-'}</span>
                 </div>
                 {item.lastPrice ? (
-                  <div style={{ marginTop: 8, fontSize: 12 }}>
+                  <div className="top-gap-sm text-xs">
                     <div>
                       {item.lastPrice.currency} low {item.lastPrice.low ?? '-'} / high {item.lastPrice.high ?? '-'}
                     </div>
                     <div className="muted">{item.lastPrice.source}</div>
                   </div>
                 ) : (
-                  <div className="muted" style={{ marginTop: 8, fontSize: 12 }}>
+                  <div className="muted top-gap-sm text-xs">
                     Price not loaded yet.
                   </div>
                 )}
-                <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                <div className="card-actions-wrap">
                   <button type="button" onClick={() => handleGetSavedCardPrice(item)}>
                     Get Price
                   </button>
@@ -665,8 +658,8 @@ export default function HomePage() {
 
       <section className="panel">
         <div className="panel-header">
-          <h2 style={{ margin: 0 }}>Watchlist</h2>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+          <h2 className="panel-subtitle">Watchlist</h2>
+          <label className="inline-control">
             Sort
             <select
               value={watchlistSort}
@@ -679,7 +672,7 @@ export default function HomePage() {
           </label>
         </div>
         {watchlist.length === 0 ? (
-          <p className="muted" style={{ marginTop: 10 }}>
+          <p className="muted empty-state-text">
             No cards in watchlist yet. Add cards from candidates or manual search.
           </p>
         ) : (
@@ -688,7 +681,7 @@ export default function HomePage() {
               <li key={item.lookupId} className="entity-card">
                 <div className="card-main-row">
                   <div className="card-main-col">
-                    <div style={{ fontWeight: 600 }}>{item.name}</div>
+                    <div className="card-title">{item.name}</div>
                     <div className="meta-row">
                       <span className="meta-pill">{item.market}</span>
                       <span className="meta-pill">{item.language ?? '-'}</span>
@@ -697,15 +690,15 @@ export default function HomePage() {
                       <span className="meta-pill">{item.variant ?? '-'}</span>
                     </div>
                     {item.lastPrice && (
-                      <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                      <div className="panel-note-tight">
                         {item.lastPrice.currency} low {item.lastPrice.low ?? '-'} / high {item.lastPrice.high ?? '-'}
                         {' ('}
                         {item.lastPrice.source}
                         {')'}
                       </div>
                     )}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                    <div className="inline-meta-actions">
+                      <label className="inline-control">
                         Target Price
                         <input
                           type="number"
@@ -715,7 +708,7 @@ export default function HomePage() {
                           defaultValue={item.goalPrice ?? ''}
                           onBlur={(event) => setWatchlistGoalPrice(item.lookupId, event.target.value)}
                           aria-label={`Target price for ${item.name}`}
-                          style={{ width: 120 }}
+                          className="target-input"
                         />
                       </label>
                       {typeof item.goalPrice === 'number' && item.lastPrice && (
@@ -759,7 +752,7 @@ export default function HomePage() {
           <span className="section-kicker">History</span>
         </div>
         {recentHistory.length === 0 ? (
-          <p className="muted" style={{ marginTop: 10 }}>
+          <p className="muted empty-state-text">
             No recent checks yet. Prices fetched from candidates/manual search will appear here.
           </p>
         ) : (
@@ -768,12 +761,12 @@ export default function HomePage() {
               <li key={item.lookupId} className="entity-card">
                 <div className="card-main-row">
                   <div className="card-main-col">
-                    <div style={{ fontWeight: 600 }}>{item.name}</div>
-                    <div className="muted" style={{ fontSize: 12 }}>
+                    <div className="card-title">{item.name}</div>
+                    <div className="muted text-xs">
                       Last checked: {item.viewedAt}
                     </div>
                     {item.lastPrice && (
-                      <div className="muted" style={{ fontSize: 12 }}>
+                      <div className="muted text-xs">
                         {item.lastPrice.currency} low {item.lastPrice.low ?? '-'} / high{' '}
                         {item.lastPrice.high ?? '-'} ({item.lastPrice.source})
                       </div>
@@ -807,7 +800,7 @@ export default function HomePage() {
         )}
       </section>
 
-      <footer className="muted" style={{ marginTop: 24, fontSize: 12 }}>
+      <footer className="muted footer-tip">
         Tip: Better photos and clear card boundaries usually improve OCR confidence.
       </footer>
 

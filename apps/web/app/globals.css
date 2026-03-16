@@ -467,11 +467,6 @@ button:disabled {
   font-size: 12px;
 }
 
-.muted-xs {
-  color: var(--muted);
-  font-size: 12px;
-}
-
 .align-self-end {
   align-self: flex-end;
 }
