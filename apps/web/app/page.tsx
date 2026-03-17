@@ -3,12 +3,16 @@
 import type { CardVariant, Language, Market } from '@pokecard/shared';
 import type { CandidateCard, CardIdentity, PriceResponse } from '@pokecard/shared';
 import { useEffect, useMemo, useState } from 'react';
+import { CompareCardsSection } from './components/compare-cards-section';
 import { CandidatesSection } from './components/candidates-section';
 import { ManualSearchPriceSection } from './components/manual-search-price-section';
+import { RecentHistorySection } from './components/recent-history-section';
 import { UploadCameraCropSection } from './components/upload-camera-crop-section';
+import { WatchlistSection } from './components/watchlist-section';
 import { useCardSearch } from './hooks/use-card-search';
 import { usePrice } from './hooks/use-price';
 import { useRecognize } from './hooks/use-recognize';
+import type { SavedCard, WatchlistSort } from './types/saved-card';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:4000';
 const WATCHLIST_STORAGE_KEY = 'pokecard:watchlist:v1';
@@ -28,8 +32,6 @@ const MANUAL_VARIANTS: readonly CardVariant[] = [
   'OTHER',
 ];
 
-type WatchlistSort = 'newest' | 'name-asc';
-
 type SearchPreset = {
   id: string;
   name: string;
@@ -39,27 +41,6 @@ type SearchPreset = {
   manualSetCode: string;
   manualNumber: string;
   manualVariant: CardVariant | '';
-};
-
-type SavedCard = {
-  lookupId: string;
-  name: string;
-  market: Market;
-  language?: Language;
-  setCode?: string;
-  number?: string;
-  variant?: string;
-  imageUrl?: string;
-  viewedAt: string;
-  goalPrice?: number;
-  lastPrice?: {
-    currency: string;
-    low: number | null;
-    high: number | null;
-    source: string;
-    fetchedAt: string;
-    previousLow?: number | null;
-  };
 };
 
 function parseSavedCards(raw: string | null): SavedCard[] {
@@ -609,196 +590,32 @@ export default function HomePage() {
         </section>
       )}
 
-      <section className="panel">
-        <div className="panel-header">
-          <h2>Compare Cards (up to 3)</h2>
-          <span className="section-kicker">Quick compare</span>
-        </div>
-        {compareCards.length === 0 ? (
-          <p className="muted empty-state-text">
-            Select a candidate or manual result, then add it to compare.
-          </p>
-        ) : (
-          <div className="compare-grid">
-            {compareCards.map((item) => (
-              <article key={item.lookupId} className="entity-card">
-                <div className="card-title">{item.name}</div>
-                <div className="meta-row">
-                  <span className="meta-pill">{item.market}</span>
-                  <span className="meta-pill">{item.language ?? '-'}</span>
-                  <span className="meta-pill">{item.setCode ?? '-'}</span>
-                  <span className="meta-pill">#{item.number ?? '-'}</span>
-                  <span className="meta-pill">{item.variant ?? '-'}</span>
-                </div>
-                {item.lastPrice ? (
-                  <div className="top-gap-sm text-xs">
-                    <div>
-                      {item.lastPrice.currency} low {item.lastPrice.low ?? '-'} / high {item.lastPrice.high ?? '-'}
-                    </div>
-                    <div className="muted">{item.lastPrice.source}</div>
-                  </div>
-                ) : (
-                  <div className="muted top-gap-sm text-xs">
-                    Price not loaded yet.
-                  </div>
-                )}
-                <div className="card-actions-wrap">
-                  <button type="button" onClick={() => handleGetSavedCardPrice(item)}>
-                    Get Price
-                  </button>
-                  <button className="ghost" type="button" onClick={() => removeFromCompare(item.lookupId)}>
-                    Remove
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
+      <CompareCardsSection
+        compareCards={compareCards}
+        onGetPrice={handleGetSavedCardPrice}
+        onRemove={removeFromCompare}
+      />
 
-      <section className="panel">
-        <div className="panel-header">
-          <h2 className="panel-subtitle">Watchlist</h2>
-          <label className="inline-control">
-            Sort
-            <select
-              value={watchlistSort}
-              onChange={(event) => setWatchlistSort(event.target.value as WatchlistSort)}
-              aria-label="Watchlist sort"
-            >
-              <option value="newest">Recently added</option>
-              <option value="name-asc">Name (A-Z)</option>
-            </select>
-          </label>
-        </div>
-        {watchlist.length === 0 ? (
-          <p className="muted empty-state-text">
-            No cards in watchlist yet. Add cards from candidates or manual search.
-          </p>
-        ) : (
-          <ul className="card-list">
-            {sortedWatchlist.map((item) => (
-              <li key={item.lookupId} className="entity-card">
-                <div className="card-main-row">
-                  <div className="card-main-col">
-                    <div className="card-title">{item.name}</div>
-                    <div className="meta-row">
-                      <span className="meta-pill">{item.market}</span>
-                      <span className="meta-pill">{item.language ?? '-'}</span>
-                      <span className="meta-pill">{item.setCode ?? '-'}</span>
-                      <span className="meta-pill">#{item.number ?? '-'}</span>
-                      <span className="meta-pill">{item.variant ?? '-'}</span>
-                    </div>
-                    {item.lastPrice && (
-                      <div className="panel-note-tight">
-                        {item.lastPrice.currency} low {item.lastPrice.low ?? '-'} / high {item.lastPrice.high ?? '-'}
-                        {' ('}
-                        {item.lastPrice.source}
-                        {')'}
-                      </div>
-                    )}
-                    <div className="inline-meta-actions">
-                      <label className="inline-control">
-                        Target Price
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          inputMode="decimal"
-                          defaultValue={item.goalPrice ?? ''}
-                          onBlur={(event) => setWatchlistGoalPrice(item.lookupId, event.target.value)}
-                          aria-label={`Target price for ${item.name}`}
-                          className="target-input"
-                        />
-                      </label>
-                      {typeof item.goalPrice === 'number' && item.lastPrice && (
-                        <span
-                          className={`status-pill ${item.lastPrice.low !== null && item.lastPrice.low <= item.goalPrice ? 'good' : 'warn'}`}
-                        >
-                          {item.lastPrice.low !== null && item.lastPrice.low <= item.goalPrice
-                            ? 'Target reached'
-                            : 'Above target'}
-                        </span>
-                      )}
-                      {(() => {
-                        const lowDiff = getLowPriceDiff(item.lastPrice);
-                        if (lowDiff === null) return null;
-                        return (
-                          <span className={`status-pill ${lowDiff <= 0 ? 'good' : 'warn'}`}>
-                            {formatLowPriceDiff(lowDiff)}
-                          </span>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                  <div className="card-actions-row">
-                    <button type="button" onClick={() => handleGetSavedCardPrice(item)}>
-                      Get Price
-                    </button>
-                    <button className="ghost" type="button" onClick={() => toggleWatchlist(item)}>
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <WatchlistSection
+        watchlist={watchlist}
+        sortedWatchlist={sortedWatchlist}
+        watchlistSort={watchlistSort}
+        onWatchlistSortChange={setWatchlistSort}
+        onGetPrice={handleGetSavedCardPrice}
+        onToggleWatchlist={toggleWatchlist}
+        onSetGoalPrice={setWatchlistGoalPrice}
+        getLowPriceDiff={getLowPriceDiff}
+        formatLowPriceDiff={formatLowPriceDiff}
+      />
 
-      <section className="panel">
-        <div className="panel-header">
-          <h2>Recent Price Checks</h2>
-          <span className="section-kicker">History</span>
-        </div>
-        {recentHistory.length === 0 ? (
-          <p className="muted empty-state-text">
-            No recent checks yet. Prices fetched from candidates/manual search will appear here.
-          </p>
-        ) : (
-          <ul className="card-list">
-            {recentHistory.map((item) => (
-              <li key={item.lookupId} className="entity-card">
-                <div className="card-main-row">
-                  <div className="card-main-col">
-                    <div className="card-title">{item.name}</div>
-                    <div className="muted text-xs">
-                      Last checked: {item.viewedAt}
-                    </div>
-                    {item.lastPrice && (
-                      <div className="muted text-xs">
-                        {item.lastPrice.currency} low {item.lastPrice.low ?? '-'} / high{' '}
-                        {item.lastPrice.high ?? '-'} ({item.lastPrice.source})
-                      </div>
-                    )}
-                    {(() => {
-                      const lowDiff = getLowPriceDiff(item.lastPrice);
-                      if (lowDiff === null) return null;
-                      return (
-                        <div className={`status-pill ${lowDiff <= 0 ? 'good' : 'warn'}`}>
-                          {formatLowPriceDiff(lowDiff)}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                  <div className="card-actions-row">
-                    <button type="button" onClick={() => handleGetSavedCardPrice(item)}>
-                      Recheck Price
-                    </button>
-                    <button
-                      className="ghost"
-                      type="button"
-                      onClick={() => toggleWatchlist({ ...item, market })}
-                    >
-                      {isWatchlistedById(item.lookupId) ? 'Remove Watchlist' : 'Add Watchlist'}
-                    </button>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <RecentHistorySection
+        recentHistory={recentHistory}
+        isWatchlistedById={isWatchlistedById}
+        onGetPrice={handleGetSavedCardPrice}
+        onToggleWatchlist={toggleWatchlist}
+        getLowPriceDiff={getLowPriceDiff}
+        formatLowPriceDiff={formatLowPriceDiff}
+      />
 
       <footer className="muted footer-tip">
         Tip: Better photos and clear card boundaries usually improve OCR confidence.
