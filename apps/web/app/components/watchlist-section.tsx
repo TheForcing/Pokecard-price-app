@@ -29,6 +29,7 @@ export function WatchlistSection({
     <section className="panel">
       <div className="panel-header">
         <h2 className="panel-subtitle">Watchlist</h2>
+        <span className="section-kicker">Tracking</span>
         <label className="inline-control">
           Sort
           <select
@@ -42,7 +43,7 @@ export function WatchlistSection({
         </label>
       </div>
       {watchlist.length === 0 ? (
-        <p className="muted empty-state-text">No cards in watchlist yet. Add cards from candidates or manual search.</p>
+        <p className="muted empty-state-text">No cards in watchlist yet. Add cards from candidates or manual results.</p>
       ) : (
         <ul className="card-list">
           {sortedWatchlist.map((item) => {
@@ -66,7 +67,7 @@ export function WatchlistSection({
                       <span className="meta-pill">{item.variant ?? '-'}</span>
                     </div>
                     {item.lastPrice && (
-                      <div className="panel-note-tight">
+                      <div className="panel-note-tight card-price-meta">
                         {item.lastPrice.currency} low {item.lastPrice.low ?? '-'} / high {item.lastPrice.high ?? '-'} (
                         {item.lastPrice.source})
                       </div>
@@ -99,7 +100,7 @@ export function WatchlistSection({
                   </div>
                   <div className="card-actions-row">
                     <button type="button" onClick={() => onGetPrice(item)}>
-                      Get Price
+                      Refresh Price
                     </button>
                     <button className="ghost" type="button" onClick={() => onToggleWatchlist(item)}>
                       Remove

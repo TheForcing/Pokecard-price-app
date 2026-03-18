@@ -383,6 +383,7 @@ button:disabled {
 
 .card-title {
   font-weight: 600;
+  line-height: 1.35;
 }
 
 .meta-row {
@@ -460,6 +461,10 @@ button:disabled {
 
 .empty-state-text {
   margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px dashed #d6e1f2;
+  border-radius: 10px;
+  background: #f8fbff;
 }
 
 .note-text {
@@ -548,6 +553,20 @@ button:disabled {
   gap: 8px;
   margin-top: 10px;
   flex-wrap: wrap;
+}
+
+.card-actions-wrap > button,
+.card-actions-row > button {
+  min-width: 118px;
+}
+
+.card-price-meta {
+  line-height: 1.45;
+}
+
+.price-line {
+  font-weight: 600;
+  color: #2f476e;
 }
 
 .inline-control {

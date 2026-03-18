@@ -16,7 +16,7 @@ export function CompareCardsSection({ compareCards, onGetPrice, onRemove }: Comp
         <span className="section-kicker">Quick compare</span>
       </div>
       {compareCards.length === 0 ? (
-        <p className="muted empty-state-text">Select a candidate or manual result, then add it to compare.</p>
+        <p className="muted empty-state-text">No cards selected yet. Add cards from candidates or manual results.</p>
       ) : (
         <div className="compare-grid">
           {compareCards.map((item) => (
@@ -30,18 +30,18 @@ export function CompareCardsSection({ compareCards, onGetPrice, onRemove }: Comp
                 <span className="meta-pill">{item.variant ?? '-'}</span>
               </div>
               {item.lastPrice ? (
-                <div className="top-gap-sm text-xs">
-                  <div>
+                <div className="card-price-meta top-gap-sm text-xs">
+                  <div className="price-line">
                     {item.lastPrice.currency} low {item.lastPrice.low ?? '-'} / high {item.lastPrice.high ?? '-'}
                   </div>
                   <div className="muted">{item.lastPrice.source}</div>
                 </div>
               ) : (
-                <div className="muted top-gap-sm text-xs">Price not loaded yet.</div>
+                <div className="muted top-gap-sm text-xs">Price not checked yet.</div>
               )}
               <div className="card-actions-wrap">
                 <button type="button" onClick={() => onGetPrice(item)}>
-                  Get Price
+                  Refresh Price
                 </button>
                 <button className="ghost" type="button" onClick={() => onRemove(item.lookupId)}>
                   Remove
