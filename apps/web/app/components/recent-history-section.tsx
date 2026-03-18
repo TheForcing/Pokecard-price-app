@@ -27,7 +27,7 @@ export function RecentHistorySection({
       </div>
       {recentHistory.length === 0 ? (
         <p className="muted empty-state-text">
-          No recent checks yet. Prices fetched from candidates/manual search will appear here.
+          No recent checks yet. Price checks from candidates or manual results will appear here.
         </p>
       ) : (
         <ul className="card-list">
@@ -38,9 +38,9 @@ export function RecentHistorySection({
                 <div className="card-main-row">
                   <div className="card-main-col">
                     <div className="card-title">{item.name}</div>
-                    <div className="muted text-xs">Last checked: {item.viewedAt}</div>
+                    <div className="muted text-xs">Last checked at {item.viewedAt}</div>
                     {item.lastPrice && (
-                      <div className="muted text-xs">
+                      <div className="muted text-xs card-price-meta">
                         {item.lastPrice.currency} low {item.lastPrice.low ?? '-'} / high{' '}
                         {item.lastPrice.high ?? '-'} ({item.lastPrice.source})
                       </div>
