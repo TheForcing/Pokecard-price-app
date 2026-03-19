@@ -10,6 +10,7 @@
   --muted: #5f6d85;
   --accent: #2d65c8;
   --accent-strong: #234fa0;
+  --focus-ring: #1f57bd;
   --danger: #c93f37;
   --warn: #b26f13;
   --radius-lg: 14px;
@@ -64,8 +65,9 @@ select {
 input:focus-visible,
 select:focus-visible,
 button:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 55%, white);
+  outline: 3px solid var(--focus-ring);
   outline-offset: 2px;
+  box-shadow: 0 0 0 2px #ffffff;
 }
 
 button {
@@ -253,6 +255,11 @@ button:disabled {
 .entity-card:hover {
   border-color: #c7d6ec;
   box-shadow: 0 6px 14px rgba(31, 62, 112, 0.08);
+}
+
+.entity-card:focus-within {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus-ring) 22%, white);
 }
 
 .flow-strip {

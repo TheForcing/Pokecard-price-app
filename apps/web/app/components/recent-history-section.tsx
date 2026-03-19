@@ -20,9 +20,11 @@ export function RecentHistorySection({
   formatLowPriceDiff,
 }: RecentHistorySectionProps) {
   return (
-    <section className="panel">
+    <section className="panel" aria-labelledby="recent-history-heading">
       <div className="panel-header">
-        <h2 className="panel-subtitle">Recent Price Checks</h2>
+        <h2 id="recent-history-heading" className="panel-subtitle">
+          Recent Price Checks
+        </h2>
         <span className="section-kicker">History</span>
       </div>
       {recentHistory.length === 0 ? (
@@ -33,6 +35,8 @@ export function RecentHistorySection({
         <ul className="card-list">
           {recentHistory.map((item) => {
             const lowDiff = getLowPriceDiff(item.lastPrice);
+            const isWatchlisted = isWatchlistedById(item.lookupId);
+            const watchlistActionLabel = `${isWatchlisted ? 'Remove' : 'Add'} ${item.name} ${isWatchlisted ? 'from' : 'to'} watchlist`;
             return (
               <li key={item.lookupId} className="entity-card">
                 <div className="card-main-row">
@@ -52,11 +56,20 @@ export function RecentHistorySection({
                     )}
                   </div>
                   <div className="card-actions-row">
-                    <button type="button" onClick={() => onGetPrice(item)}>
+                    <button
+                      type="button"
+                      onClick={() => onGetPrice(item)}
+                      aria-label={`Recheck price for ${item.name}`}
+                    >
                       Recheck Price
                     </button>
-                    <button className="ghost" type="button" onClick={() => onToggleWatchlist(item)}>
-                      {isWatchlistedById(item.lookupId) ? 'Remove Watchlist' : 'Add Watchlist'}
+                    <button
+                      className="ghost"
+                      type="button"
+                      onClick={() => onToggleWatchlist(item)}
+                      aria-label={watchlistActionLabel}
+                    >
+                      {isWatchlisted ? 'Remove Watchlist' : 'Add Watchlist'}
                     </button>
                   </div>
                 </div>
