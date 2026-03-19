@@ -124,6 +124,58 @@ describe('HomePage', () => {
     expect(screen.getByText('Charizard')).toBeInTheDocument();
   });
 
+  it('adds descriptive aria labels to card action buttons', () => {
+    window.localStorage.setItem(
+      WATCHLIST_STORAGE_KEY,
+      JSON.stringify([
+        {
+          lookupId: 'watch-1',
+          name: 'Pikachu',
+          market: 'US',
+          viewedAt: '2026-03-09T00:00:00.000Z',
+          lastPrice: {
+            currency: 'USD',
+            low: 8,
+            high: 12,
+            source: 'TCGPLAYER',
+            fetchedAt: '2026-03-09T00:00:00.000Z',
+          },
+        },
+      ]),
+    );
+    window.localStorage.setItem(
+      RECENT_STORAGE_KEY,
+      JSON.stringify([
+        {
+          lookupId: 'recent-1',
+          name: 'Snorlax',
+          market: 'US',
+          viewedAt: '2026-03-09T00:00:00.000Z',
+        },
+      ]),
+    );
+    window.localStorage.setItem(
+      COMPARE_STORAGE_KEY,
+      JSON.stringify([
+        {
+          lookupId: 'compare-1',
+          name: 'Charizard',
+          market: 'US',
+          viewedAt: '2026-03-09T00:00:00.000Z',
+        },
+      ]),
+    );
+
+    render(<HomePage />);
+
+    expect(screen.getByRole('button', { name: 'Refresh price for Pikachu' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove Pikachu from watchlist' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Recheck price for Snorlax' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add Snorlax to watchlist' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Refresh price for Charizard' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove Charizard from compare list' })).toBeInTheDocument();
+  });
+
   it('hydrates market/language/manual search inputs from URL query', () => {
     window.history.replaceState(
       {},

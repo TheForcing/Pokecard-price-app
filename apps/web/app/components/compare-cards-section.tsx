@@ -10,9 +10,11 @@ type CompareCardsSectionProps = {
 
 export function CompareCardsSection({ compareCards, onGetPrice, onRemove }: CompareCardsSectionProps) {
   return (
-    <section className="panel">
+    <section className="panel" aria-labelledby="compare-cards-heading">
       <div className="panel-header">
-        <h2 className="panel-subtitle">Compare Cards (up to 3)</h2>
+        <h2 id="compare-cards-heading" className="panel-subtitle">
+          Compare Cards (up to 3)
+        </h2>
         <span className="section-kicker">Quick compare</span>
       </div>
       {compareCards.length === 0 ? (
@@ -40,10 +42,19 @@ export function CompareCardsSection({ compareCards, onGetPrice, onRemove }: Comp
                 <div className="muted top-gap-sm text-xs">Price not checked yet.</div>
               )}
               <div className="card-actions-wrap">
-                <button type="button" onClick={() => onGetPrice(item)}>
+                <button
+                  type="button"
+                  onClick={() => onGetPrice(item)}
+                  aria-label={`Refresh price for ${item.name}`}
+                >
                   Refresh Price
                 </button>
-                <button className="ghost" type="button" onClick={() => onRemove(item.lookupId)}>
+                <button
+                  className="ghost"
+                  type="button"
+                  onClick={() => onRemove(item.lookupId)}
+                  aria-label={`Remove ${item.name} from compare list`}
+                >
                   Remove
                 </button>
               </div>

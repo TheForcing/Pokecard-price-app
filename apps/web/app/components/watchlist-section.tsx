@@ -26,9 +26,11 @@ export function WatchlistSection({
   formatLowPriceDiff,
 }: WatchlistSectionProps) {
   return (
-    <section className="panel">
+    <section className="panel" aria-labelledby="watchlist-heading">
       <div className="panel-header">
-        <h2 className="panel-subtitle">Watchlist</h2>
+        <h2 id="watchlist-heading" className="panel-subtitle">
+          Watchlist
+        </h2>
         <span className="section-kicker">Tracking</span>
         <label className="inline-control">
           Sort
@@ -99,10 +101,19 @@ export function WatchlistSection({
                     </div>
                   </div>
                   <div className="card-actions-row">
-                    <button type="button" onClick={() => onGetPrice(item)}>
+                    <button
+                      type="button"
+                      onClick={() => onGetPrice(item)}
+                      aria-label={`Refresh price for ${item.name}`}
+                    >
                       Refresh Price
                     </button>
-                    <button className="ghost" type="button" onClick={() => onToggleWatchlist(item)}>
+                    <button
+                      className="ghost"
+                      type="button"
+                      onClick={() => onToggleWatchlist(item)}
+                      aria-label={`Remove ${item.name} from watchlist`}
+                    >
                       Remove
                     </button>
                   </div>
