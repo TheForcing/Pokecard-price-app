@@ -176,6 +176,90 @@ describe('HomePage', () => {
     expect(screen.getByRole('button', { name: 'Remove Charizard from compare list' })).toBeInTheDocument();
   });
 
+  it('keeps card actions keyboard-focusable', () => {
+    window.localStorage.setItem(
+      WATCHLIST_STORAGE_KEY,
+      JSON.stringify([
+        {
+          lookupId: 'watch-1',
+          name: 'Pikachu',
+          market: 'US',
+          viewedAt: '2026-03-09T00:00:00.000Z',
+        },
+      ]),
+    );
+    window.localStorage.setItem(
+      RECENT_STORAGE_KEY,
+      JSON.stringify([
+        {
+          lookupId: 'recent-1',
+          name: 'Snorlax',
+          market: 'US',
+          viewedAt: '2026-03-09T00:00:00.000Z',
+        },
+      ]),
+    );
+    window.localStorage.setItem(
+      COMPARE_STORAGE_KEY,
+      JSON.stringify([
+        {
+          lookupId: 'compare-1',
+          name: 'Charizard',
+          market: 'US',
+          viewedAt: '2026-03-09T00:00:00.000Z',
+        },
+      ]),
+    );
+
+    render(<HomePage />);
+
+    const watchlistRefresh = screen.getByRole('button', { name: 'Refresh price for Pikachu' });
+    const watchlistRemove = screen.getByRole('button', { name: 'Remove Pikachu from watchlist' });
+    const recentRecheck = screen.getByRole('button', { name: 'Recheck price for Snorlax' });
+    const recentToggle = screen.getByRole('button', { name: 'Add Snorlax to watchlist' });
+    const compareRefresh = screen.getByRole('button', { name: 'Refresh price for Charizard' });
+    const compareRemove = screen.getByRole('button', { name: 'Remove Charizard from compare list' });
+
+    watchlistRefresh.focus();
+    expect(watchlistRefresh).toHaveFocus();
+    watchlistRemove.focus();
+    expect(watchlistRemove).toHaveFocus();
+    recentRecheck.focus();
+    expect(recentRecheck).toHaveFocus();
+    recentToggle.focus();
+    expect(recentToggle).toHaveFocus();
+    compareRefresh.focus();
+    expect(compareRefresh).toHaveFocus();
+    compareRemove.focus();
+    expect(compareRemove).toHaveFocus();
+  });
+
+  it('shows empty-state guidance for manual, compare, watchlist, and history sections', () => {
+    render(<HomePage />);
+
+    expect(screen.getByText('No manual results yet.')).toBeInTheDocument();
+    expect(screen.getByText('No cards selected yet. Add cards from candidates or manual results.')).toBeInTheDocument();
+    expect(screen.getByText('No cards in watchlist yet. Add cards from candidates or manual results.')).toBeInTheDocument();
+    expect(
+      screen.getByText('No recent checks yet. Price checks from candidates or manual results will appear here.'),
+    ).toBeInTheDocument();
+  });
+
+  it('shows user-friendly alert when manual search request fails', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Failed to fetch'));
+
+    render(<HomePage />);
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Mew' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Cannot reach server. Check internet or server status, then try again.',
+      );
+    });
+  });
+
   it('hydrates market/language/manual search inputs from URL query', () => {
     window.history.replaceState(
       {},
