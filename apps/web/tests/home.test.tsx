@@ -298,6 +298,31 @@ describe('HomePage', () => {
     });
   });
 
+  it('removes optional query params when manual filters are cleared', async () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/?market=JP&language=JA&q=Mew&setCode=sv2&number=125&variant=HOLOFOIL',
+    );
+
+    render(<HomePage />);
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Set Code'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Number'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Variant'), { target: { value: '' } });
+
+    await waitFor(() => {
+      const params = new URLSearchParams(window.location.search);
+      expect(params.get('market')).toBe('JP');
+      expect(params.get('language')).toBe('JA');
+      expect(params.get('q')).toBeNull();
+      expect(params.get('setCode')).toBeNull();
+      expect(params.get('number')).toBeNull();
+      expect(params.get('variant')).toBeNull();
+    });
+  });
+
   it('saves current filters as a preset', async () => {
     render(<HomePage />);
 
@@ -322,6 +347,66 @@ describe('HomePage', () => {
       expect(presets[0].manualSetCode).toBe('sv2');
       expect(presets[0].manualNumber).toBe('125');
       expect(presets[0].manualVariant).toBe('HOLOFOIL');
+    });
+  });
+
+  it('keeps preset apply/delete actions disabled when no preset is selected', () => {
+    render(<HomePage />);
+
+    expect(screen.getByRole('button', { name: 'Apply Preset' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Delete Preset' })).toBeDisabled();
+  });
+
+  it('updates an existing preset when saving with the same name', async () => {
+    window.localStorage.setItem(
+      SEARCH_PRESETS_STORAGE_KEY,
+      JSON.stringify([
+        {
+          id: 'preset-1',
+          name: 'JP Mew Holo',
+          market: 'JP',
+          language: 'JA',
+          manualQuery: 'Mew',
+          manualSetCode: 'sv2',
+          manualNumber: '125',
+          manualVariant: 'HOLOFOIL',
+        },
+      ]),
+    );
+
+    render(<HomePage />);
+
+    fireEvent.change(screen.getByLabelText('Market'), { target: { value: 'KR' } });
+    fireEvent.change(screen.getByLabelText('Card Language'), { target: { value: 'KO' } });
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Eevee' } });
+    fireEvent.change(screen.getByLabelText('Set Code'), { target: { value: 'sv1' } });
+    fireEvent.change(screen.getByLabelText('Number'), { target: { value: '133' } });
+    fireEvent.change(screen.getByLabelText('Variant'), { target: { value: 'PROMO' } });
+    fireEvent.change(screen.getByLabelText('Preset Name'), { target: { value: 'jp mew holo' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Preset' }));
+
+    await waitFor(() => {
+      const raw = window.localStorage.getItem(SEARCH_PRESETS_STORAGE_KEY);
+      expect(raw).toBeTruthy();
+      const presets = JSON.parse(raw ?? '[]') as Array<{
+        id: string;
+        name: string;
+        market: string;
+        language: string;
+        manualQuery: string;
+        manualSetCode: string;
+        manualNumber: string;
+        manualVariant: string;
+      }>;
+      expect(presets).toHaveLength(1);
+      expect(presets[0].id).toBe('preset-1');
+      expect(presets[0].name).toBe('jp mew holo');
+      expect(presets[0].market).toBe('KR');
+      expect(presets[0].language).toBe('KO');
+      expect(presets[0].manualQuery).toBe('Eevee');
+      expect(presets[0].manualSetCode).toBe('sv1');
+      expect(presets[0].manualNumber).toBe('133');
+      expect(presets[0].manualVariant).toBe('PROMO');
     });
   });
 
@@ -354,6 +439,37 @@ describe('HomePage', () => {
       expect(screen.getByLabelText('Set Code')).toHaveValue('sv1');
       expect(screen.getByLabelText('Number')).toHaveValue('133');
       expect(screen.getByLabelText('Variant')).toHaveValue('PROMO');
+    });
+  });
+
+  it('deletes a selected preset from storage and resets selector', async () => {
+    window.localStorage.setItem(
+      SEARCH_PRESETS_STORAGE_KEY,
+      JSON.stringify([
+        {
+          id: 'preset-1',
+          name: 'KR Promo',
+          market: 'KR',
+          language: 'KO',
+          manualQuery: 'Eevee',
+          manualSetCode: 'sv1',
+          manualNumber: '133',
+          manualVariant: 'PROMO',
+        },
+      ]),
+    );
+
+    render(<HomePage />);
+
+    fireEvent.change(screen.getByLabelText('Saved Presets'), { target: { value: 'preset-1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Preset' }));
+
+    await waitFor(() => {
+      const raw = window.localStorage.getItem(SEARCH_PRESETS_STORAGE_KEY);
+      expect(raw).toBeTruthy();
+      const presets = JSON.parse(raw ?? '[]') as Array<{ id: string }>;
+      expect(presets).toHaveLength(0);
+      expect(screen.getByLabelText('Saved Presets')).toHaveValue('');
     });
   });
 
