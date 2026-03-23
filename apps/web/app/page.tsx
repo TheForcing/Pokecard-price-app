@@ -2,7 +2,7 @@
 
 import type { CardVariant, Language, Market } from '@pokecard/shared';
 import type { CandidateCard, CardIdentity, PriceResponse } from '@pokecard/shared';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CompareCardsSection } from './components/compare-cards-section';
 import { CandidatesSection } from './components/candidates-section';
 import { ManualSearchPriceSection } from './components/manual-search-price-section';
@@ -41,6 +41,11 @@ type SearchPreset = {
   manualSetCode: string;
   manualNumber: string;
   manualVariant: CardVariant | '';
+};
+
+type ManualActionToast = {
+  kind: 'success' | 'error' | 'info';
+  message: string;
 };
 
 function parseSavedCards(raw: string | null): SavedCard[] {
@@ -210,6 +215,8 @@ export default function HomePage() {
   const [savedPresets, setSavedPresets] = useState<SearchPreset[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState('');
   const [isUrlStateInitialized, setIsUrlStateInitialized] = useState(false);
+  const [manualActionToast, setManualActionToast] = useState<ManualActionToast | null>(null);
+  const previousManualLoadingRef = useRef(false);
 
   const recognize = useRecognize({ apiBase: API_BASE, lowConfidenceThreshold: 0.5 });
   const price = usePrice({ apiBase: API_BASE });
@@ -300,6 +307,29 @@ export default function HomePage() {
   }, [manualQuery, language, fetchSuggestions, clearSuggestions]);
 
   useEffect(() => {
+    const wasLoading = previousManualLoadingRef.current;
+
+    if (!wasLoading && cardSearch.loading) {
+      setManualActionToast({ kind: 'info', message: 'Searching cards with current filters...' });
+    }
+
+    if (wasLoading && !cardSearch.loading && cardSearch.hasSearched) {
+      if (cardSearch.error) {
+        setManualActionToast({ kind: 'error', message: 'Search failed. Review filters and try again.' });
+      } else if (cardSearch.manualResults.length === 0) {
+        setManualActionToast({ kind: 'info', message: 'No matching cards found. Try broader keywords.' });
+      } else {
+        setManualActionToast({
+          kind: 'success',
+          message: `Found ${cardSearch.manualResults.length} matching card(s). Select one to check price.`,
+        });
+      }
+    }
+
+    previousManualLoadingRef.current = cardSearch.loading;
+  }, [cardSearch.error, cardSearch.hasSearched, cardSearch.loading, cardSearch.manualResults.length]);
+
+  useEffect(() => {
     try {
       const storedWatchlist = parseSavedCards(globalThis.localStorage.getItem(WATCHLIST_STORAGE_KEY));
       const storedRecent = parseSavedCards(globalThis.localStorage.getItem(RECENT_STORAGE_KEY));
@@ -328,7 +358,10 @@ export default function HomePage() {
 
   function saveCurrentPreset() {
     const trimmedName = presetNameInput.trim();
-    if (!trimmedName) return;
+    if (!trimmedName) {
+      setManualActionToast({ kind: 'error', message: 'Enter a preset name before saving.' });
+      return;
+    }
     const nextPreset: SearchPreset = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       name: trimmedName,
@@ -345,30 +378,62 @@ export default function HomePage() {
       nextPresets = [...savedPresets];
       nextPresets[existingIndex] = { ...nextPreset, id: savedPresets[existingIndex].id };
       setSelectedPresetId(savedPresets[existingIndex].id);
+      setManualActionToast({ kind: 'success', message: `Updated preset "${trimmedName}".` });
     } else {
       nextPresets = [nextPreset, ...savedPresets];
       setSelectedPresetId(nextPreset.id);
+      setManualActionToast({ kind: 'success', message: `Saved preset "${trimmedName}".` });
     }
     persistSearchPresets(nextPresets);
     setPresetNameInput('');
   }
 
   function applySelectedPreset() {
+    if (!selectedPresetId) {
+      setManualActionToast({ kind: 'error', message: 'Select a preset before applying.' });
+      return;
+    }
     const preset = savedPresets.find((item) => item.id === selectedPresetId);
-    if (!preset) return;
+    if (!preset) {
+      setManualActionToast({ kind: 'error', message: 'Selected preset was not found.' });
+      return;
+    }
     setMarket(preset.market);
     setLanguage(preset.language);
     setManualQuery(preset.manualQuery);
     setManualSetCode(preset.manualSetCode);
     setManualNumber(preset.manualNumber);
     setManualVariant(preset.manualVariant);
+    setManualActionToast({ kind: 'success', message: `Applied preset "${preset.name}".` });
   }
 
   function deleteSelectedPreset() {
-    if (!selectedPresetId) return;
+    if (!selectedPresetId) {
+      setManualActionToast({ kind: 'error', message: 'Select a preset before deleting.' });
+      return;
+    }
+    const targetPreset = savedPresets.find((item) => item.id === selectedPresetId);
     const next = savedPresets.filter((item) => item.id !== selectedPresetId);
     persistSearchPresets(next);
     setSelectedPresetId('');
+    if (targetPreset) {
+      setManualActionToast({ kind: 'success', message: `Deleted preset "${targetPreset.name}".` });
+      return;
+    }
+    setManualActionToast({ kind: 'info', message: 'Selected preset has already been removed.' });
+  }
+
+  function clearManualFilters() {
+    setManualQuery('');
+    setManualSetCode('');
+    setManualNumber('');
+    setManualVariant('');
+    setPresetNameInput('');
+    setSelectedPresetId('');
+    cardSearch.resetManualSearch();
+    clearSuggestions();
+    price.clearPrice();
+    setManualActionToast({ kind: 'info', message: 'Manual filters cleared.' });
   }
 
   function persistWatchlist(next: SavedCard[]) {
@@ -551,6 +616,7 @@ export default function HomePage() {
         manualVariant={manualVariant}
         suggestions={cardSearch.suggestions}
         suggestionsLoading={cardSearch.suggestionsLoading}
+        actionToast={manualActionToast}
         presetNameInput={presetNameInput}
         selectedPresetId={selectedPresetId}
         savedPresets={savedPresets}
@@ -560,6 +626,7 @@ export default function HomePage() {
         onManualVariantChange={setManualVariant}
         onPresetNameInputChange={setPresetNameInput}
         onSelectedPresetIdChange={setSelectedPresetId}
+        onClearManualFilters={clearManualFilters}
         onSavePreset={saveCurrentPreset}
         onApplyPreset={applySelectedPreset}
         onDeletePreset={deleteSelectedPreset}

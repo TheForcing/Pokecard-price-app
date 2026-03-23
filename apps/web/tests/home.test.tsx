@@ -254,10 +254,68 @@ describe('HomePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent(
-        'Cannot reach server. Check internet or server status, then try again.',
-      );
+      expect(screen.getByText('Search failed. Review filters and try again.')).toBeInTheDocument();
+      expect(
+        screen.getByText('Cannot reach server. Check internet or server status, then try again.'),
+      ).toBeInTheDocument();
     });
+  });
+
+  it('clears manual filters and shows feedback toast', async () => {
+    window.localStorage.setItem(
+      SEARCH_PRESETS_STORAGE_KEY,
+      JSON.stringify([
+        {
+          id: 'preset-1',
+          name: 'KR Promo',
+          market: 'KR',
+          language: 'KO',
+          manualQuery: 'Eevee',
+          manualSetCode: 'sv1',
+          manualNumber: '133',
+          manualVariant: 'PROMO',
+        },
+      ]),
+    );
+
+    render(<HomePage />);
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Mew' } });
+    fireEvent.change(screen.getByLabelText('Set Code'), { target: { value: 'sv2' } });
+    fireEvent.change(screen.getByLabelText('Number'), { target: { value: '125' } });
+    fireEvent.change(screen.getByLabelText('Variant'), { target: { value: 'HOLOFOIL' } });
+    fireEvent.change(screen.getByLabelText('Preset Name'), { target: { value: 'My Preset' } });
+    fireEvent.change(screen.getByLabelText('Saved Presets'), { target: { value: 'preset-1' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear Filters' }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Name')).toHaveValue('');
+      expect(screen.getByLabelText('Set Code')).toHaveValue('');
+      expect(screen.getByLabelText('Number')).toHaveValue('');
+      expect(screen.getByLabelText('Variant')).toHaveValue('');
+      expect(screen.getByLabelText('Preset Name')).toHaveValue('');
+      expect(screen.getByLabelText('Saved Presets')).toHaveValue('');
+      expect(screen.getByText('Manual filters cleared.')).toBeInTheDocument();
+    });
+  });
+
+  it('disables manual form actions while search is loading', () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise<Response>(() => {}));
+
+    render(<HomePage />);
+
+    fireEvent.change(screen.getByLabelText('Preset Name'), { target: { value: 'Busy preset' } });
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Charizard' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+
+    expect(screen.getByRole('button', { name: 'Searching…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save Preset' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Clear Filters' })).toBeDisabled();
+    expect(screen.getByLabelText('Name')).toBeDisabled();
+    expect(screen.getByLabelText('Set Code')).toBeDisabled();
+    expect(screen.getByLabelText('Number')).toBeDisabled();
+    expect(screen.getByLabelText('Variant')).toBeDisabled();
   });
 
   it('hydrates market/language/manual search inputs from URL query', () => {
