@@ -18,6 +18,7 @@ type ManualSearchPriceSectionProps = {
   manualVariant: CardVariant | '';
   suggestions: CardIdentity[];
   suggestionsLoading: boolean;
+  actionToast: ActionToast | null;
   presetNameInput: string;
   selectedPresetId: string;
   savedPresets: SearchPreset[];
@@ -27,6 +28,7 @@ type ManualSearchPriceSectionProps = {
   onManualVariantChange: (value: CardVariant | '') => void;
   onPresetNameInputChange: (value: string) => void;
   onSelectedPresetIdChange: (value: string) => void;
+  onClearManualFilters: () => void;
   onSavePreset: () => void;
   onApplyPreset: () => void;
   onDeletePreset: () => void;
@@ -36,6 +38,11 @@ type ManualSearchPriceSectionProps = {
   isWatchlisted: (card: CardIdentity) => boolean;
   onToggleWatchlist: (card: CardIdentity) => void;
   onGetPrice: (card: CardIdentity) => void;
+};
+
+type ActionToast = {
+  kind: 'success' | 'error' | 'info';
+  message: string;
 };
 
 type SearchPreset = {
@@ -64,6 +71,7 @@ export function ManualSearchPriceSection({
   manualVariant,
   suggestions,
   suggestionsLoading,
+  actionToast,
   presetNameInput,
   selectedPresetId,
   savedPresets,
@@ -73,6 +81,7 @@ export function ManualSearchPriceSection({
   onManualVariantChange,
   onPresetNameInputChange,
   onSelectedPresetIdChange,
+  onClearManualFilters,
   onSavePreset,
   onApplyPreset,
   onDeletePreset,
@@ -93,6 +102,22 @@ export function ManualSearchPriceSection({
     return `${price?.currency ?? ''} ${value}`.trim();
   }
 
+  const isBusy = manualLoading;
+  const toastClassName =
+    actionToast?.kind === 'error'
+      ? 'danger-inline'
+      : actionToast?.kind === 'success'
+        ? 'inline-status'
+        : 'inline-status muted';
+  const canClearManualFilters =
+    manualQuery.trim().length > 0 ||
+    manualSetCode.trim().length > 0 ||
+    manualNumber.trim().length > 0 ||
+    manualVariant !== '' ||
+    presetNameInput.trim().length > 0 ||
+    selectedPresetId !== '' ||
+    hasSearched;
+
   return (
     <>
       <section className="panel">
@@ -102,6 +127,15 @@ export function ManualSearchPriceSection({
         </div>
         <p className="panel-note">Use this when OCR is uncertain. Search by name + set/number + variant.</p>
         <p className="panel-note">Tip: the same Pokemon can have different prices per variant.</p>
+        {actionToast && (
+          <div
+            role={actionToast.kind === 'error' ? 'alert' : 'status'}
+            aria-live={actionToast.kind === 'error' ? 'assertive' : 'polite'}
+            className={toastClassName}
+          >
+            {actionToast.message}
+          </div>
+        )}
         <div className="form-row-wrap form-row-wrap-end">
           <label className="field field-grow">
             Preset Name
@@ -109,9 +143,15 @@ export function ManualSearchPriceSection({
               value={presetNameInput}
               onChange={(event) => onPresetNameInputChange(event.target.value)}
               placeholder="e.g. JP Holo"
+              disabled={isBusy}
             />
           </label>
-          <button type="button" className="secondary" onClick={onSavePreset} disabled={!presetNameInput.trim()}>
+          <button
+            type="button"
+            className="secondary"
+            onClick={onSavePreset}
+            disabled={!presetNameInput.trim() || isBusy}
+          >
             Save Preset
           </button>
           <label className="field field-grow">
@@ -120,6 +160,7 @@ export function ManualSearchPriceSection({
               value={selectedPresetId}
               onChange={(event) => onSelectedPresetIdChange(event.target.value)}
               aria-label="Saved Presets"
+              disabled={isBusy}
             >
               <option value="">Select preset</option>
               {savedPresets.map((preset) => (
@@ -129,10 +170,10 @@ export function ManualSearchPriceSection({
               ))}
             </select>
           </label>
-          <button type="button" onClick={onApplyPreset} disabled={!selectedPresetId}>
+          <button type="button" onClick={onApplyPreset} disabled={!selectedPresetId || isBusy}>
             Apply Preset
           </button>
-          <button type="button" className="ghost" onClick={onDeletePreset} disabled={!selectedPresetId}>
+          <button type="button" className="ghost" onClick={onDeletePreset} disabled={!selectedPresetId || isBusy}>
             Delete Preset
           </button>
         </div>
@@ -147,6 +188,7 @@ export function ManualSearchPriceSection({
               autoComplete="off"
               list={manualNameSuggestionId}
               aria-describedby={suggestionsLoading ? 'manual-name-suggestion-loading' : undefined}
+              disabled={isBusy}
             />
             <datalist id={manualNameSuggestionId}>
               {suggestions.map((suggestion) => (
@@ -170,6 +212,7 @@ export function ManualSearchPriceSection({
               value={manualSetCode}
               onChange={(event) => onManualSetCodeChange(event.target.value)}
               placeholder="swsh4"
+              disabled={isBusy}
             />
           </label>
           <label htmlFor={manualNumberId} className="field field-sm">
@@ -179,6 +222,7 @@ export function ManualSearchPriceSection({
               value={manualNumber}
               onChange={(event) => onManualNumberChange(event.target.value)}
               placeholder="043"
+              disabled={isBusy}
             />
           </label>
           <label htmlFor={manualVariantId} className="field field-md">
@@ -187,6 +231,7 @@ export function ManualSearchPriceSection({
               id={manualVariantId}
               value={manualVariant}
               onChange={(event) => onManualVariantChange(event.target.value as CardVariant | '')}
+              disabled={isBusy}
             >
               <option value="">Any</option>
               <option value="NORMAL">Normal</option>
@@ -211,8 +256,17 @@ export function ManualSearchPriceSection({
               })
             }
             className="align-self-end"
+            disabled={isBusy}
           >
             {manualLoading ? 'Searching…' : 'Search'}
+          </button>
+          <button
+            type="button"
+            className="ghost align-self-end"
+            onClick={onClearManualFilters}
+            disabled={!canClearManualFilters || isBusy}
+          >
+            Clear Filters
           </button>
         </div>
 
@@ -272,18 +326,20 @@ export function ManualSearchPriceSection({
                     <div className="card-actions-col">
                       <button
                         className="secondary"
+                        disabled={isBusy}
                         onClick={() => {
                           onSelectManual(card);
                         }}
                       >
                         Select
                       </button>
-                      <button onClick={() => onGetPrice(card)}>
+                      <button onClick={() => onGetPrice(card)} disabled={isBusy}>
                         Get Price
                       </button>
                       <button
                         className="ghost"
                         type="button"
+                        disabled={isBusy}
                         onClick={() => onToggleWatchlist(card)}
                       >
                         {isWatchlisted(card) ? 'Remove Watchlist' : 'Add Watchlist'}

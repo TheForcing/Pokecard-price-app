@@ -90,6 +90,15 @@ export function useCardSearch({ apiBase }: UseCardSearchParams) {
     setSuggestionsLoading(false);
   }, []);
 
+  const resetManualSearch = useCallback(() => {
+    setManualResults([]);
+    setManualSelected(null);
+    setShowAllManualResults(false);
+    setHasSearched(false);
+    setLoading(false);
+    setError(null);
+  }, []);
+
   function clearError() {
     setError(null);
   }
@@ -107,6 +116,7 @@ export function useCardSearch({ apiBase }: UseCardSearchParams) {
     searchCards,
     fetchSuggestions,
     clearSuggestions,
+    resetManualSearch,
     setManualSelected,
     setShowAllManualResults,
     clearError,
