@@ -514,6 +514,29 @@ button:disabled {
   font-size: 12px;
 }
 
+.loading-hint {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #c9d9f2;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: #24406e;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+}
+
+.loading-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #b5caf0;
+  border-top-color: #2d65c8;
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
 .warn-inline {
   margin-top: 6px;
   color: #a04500;
@@ -684,6 +707,15 @@ button:disabled {
   }
   100% {
     background-position: -100% 0;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 

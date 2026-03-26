@@ -316,6 +316,12 @@ describe('HomePage', () => {
     expect(screen.getByLabelText('Set Code')).toBeDisabled();
     expect(screen.getByLabelText('Number')).toBeDisabled();
     expect(screen.getByLabelText('Variant')).toBeDisabled();
+    expect(screen.getByText('Search in progress. Manual controls are temporarily locked.')).toBeInTheDocument();
+    expect(screen.getByTestId('manual-loading-spinner')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clear Filters' })).toHaveAttribute(
+      'title',
+      'Search in progress. Please wait.',
+    );
   });
 
   it('hydrates market/language/manual search inputs from URL query', () => {
