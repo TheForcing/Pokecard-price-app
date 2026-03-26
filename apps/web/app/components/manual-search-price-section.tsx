@@ -136,6 +136,12 @@ export function ManualSearchPriceSection({
             {actionToast.message}
           </div>
         )}
+        {isBusy && (
+          <div className="loading-hint" role="status" aria-live="polite">
+            <span className="loading-spinner" aria-hidden="true" data-testid="manual-loading-spinner" />
+            <span>Search in progress. Manual controls are temporarily locked.</span>
+          </div>
+        )}
         <div className="form-row-wrap form-row-wrap-end">
           <label className="field field-grow">
             Preset Name
@@ -151,6 +157,7 @@ export function ManualSearchPriceSection({
             className="secondary"
             onClick={onSavePreset}
             disabled={!presetNameInput.trim() || isBusy}
+            title={isBusy ? 'Search in progress. Please wait.' : undefined}
           >
             Save Preset
           </button>
@@ -170,10 +177,21 @@ export function ManualSearchPriceSection({
               ))}
             </select>
           </label>
-          <button type="button" onClick={onApplyPreset} disabled={!selectedPresetId || isBusy}>
+          <button
+            type="button"
+            onClick={onApplyPreset}
+            disabled={!selectedPresetId || isBusy}
+            title={isBusy ? 'Search in progress. Please wait.' : undefined}
+          >
             Apply Preset
           </button>
-          <button type="button" className="ghost" onClick={onDeletePreset} disabled={!selectedPresetId || isBusy}>
+          <button
+            type="button"
+            className="ghost"
+            onClick={onDeletePreset}
+            disabled={!selectedPresetId || isBusy}
+            title={isBusy ? 'Search in progress. Please wait.' : undefined}
+          >
             Delete Preset
           </button>
         </div>
@@ -257,6 +275,7 @@ export function ManualSearchPriceSection({
             }
             className="align-self-end"
             disabled={isBusy}
+            title={isBusy ? 'Search in progress. Please wait.' : undefined}
           >
             {manualLoading ? 'Searching…' : 'Search'}
           </button>
@@ -265,6 +284,7 @@ export function ManualSearchPriceSection({
             className="ghost align-self-end"
             onClick={onClearManualFilters}
             disabled={!canClearManualFilters || isBusy}
+            title={isBusy ? 'Search in progress. Please wait.' : undefined}
           >
             Clear Filters
           </button>
