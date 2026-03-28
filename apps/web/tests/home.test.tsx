@@ -309,19 +309,23 @@ describe('HomePage', () => {
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Charizard' } });
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
 
-    expect(screen.getByRole('button', { name: 'Searching…' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Save Preset' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Clear Filters' })).toBeDisabled();
+    const searchingButton = screen.getByRole('button', { name: 'Searching…' });
+    const savePresetButton = screen.getByRole('button', { name: 'Save Preset' });
+    const clearFiltersButton = screen.getByRole('button', { name: 'Clear Filters' });
+
+    expect(searchingButton).toBeDisabled();
+    expect(savePresetButton).toBeDisabled();
+    expect(clearFiltersButton).toBeDisabled();
     expect(screen.getByLabelText('Name')).toBeDisabled();
     expect(screen.getByLabelText('Set Code')).toBeDisabled();
     expect(screen.getByLabelText('Number')).toBeDisabled();
     expect(screen.getByLabelText('Variant')).toBeDisabled();
     expect(screen.getByText('Search in progress. Manual controls are temporarily locked.')).toBeInTheDocument();
     expect(screen.getByTestId('manual-loading-spinner')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Clear Filters' })).toHaveAttribute(
-      'title',
-      'Search in progress. Please wait.',
-    );
+    expect(clearFiltersButton).toHaveAttribute('title', 'Search in progress. Please wait.');
+    expect(searchingButton).toHaveClass('busy-locked-control');
+    expect(searchingButton).toHaveAttribute('data-busy-locked', 'true');
+    expect(savePresetButton).toHaveClass('busy-locked-control');
   });
 
   it('hydrates market/language/manual search inputs from URL query', () => {

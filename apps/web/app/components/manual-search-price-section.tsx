@@ -56,6 +56,8 @@ type SearchPreset = {
   manualVariant: CardVariant | '';
 };
 
+const BUSY_LOCK_TOOLTIP = 'Search in progress. Please wait.';
+
 export function ManualSearchPriceSection({
   language,
   manualResults,
@@ -118,6 +120,18 @@ export function ManualSearchPriceSection({
     selectedPresetId !== '' ||
     hasSearched;
 
+  function getBusyLockedButtonProps(className?: string): {
+    className?: string;
+    title?: string;
+    'data-busy-locked'?: 'true';
+  } {
+    return {
+      className: [className, isBusy ? 'busy-locked-control' : undefined].filter(Boolean).join(' ') || undefined,
+      title: isBusy ? BUSY_LOCK_TOOLTIP : undefined,
+      'data-busy-locked': isBusy ? 'true' : undefined,
+    };
+  }
+
   return (
     <>
       <section className="panel">
@@ -154,10 +168,9 @@ export function ManualSearchPriceSection({
           </label>
           <button
             type="button"
-            className="secondary"
             onClick={onSavePreset}
             disabled={!presetNameInput.trim() || isBusy}
-            title={isBusy ? 'Search in progress. Please wait.' : undefined}
+            {...getBusyLockedButtonProps('secondary')}
           >
             Save Preset
           </button>
@@ -181,16 +194,15 @@ export function ManualSearchPriceSection({
             type="button"
             onClick={onApplyPreset}
             disabled={!selectedPresetId || isBusy}
-            title={isBusy ? 'Search in progress. Please wait.' : undefined}
+            {...getBusyLockedButtonProps()}
           >
             Apply Preset
           </button>
           <button
             type="button"
-            className="ghost"
             onClick={onDeletePreset}
             disabled={!selectedPresetId || isBusy}
-            title={isBusy ? 'Search in progress. Please wait.' : undefined}
+            {...getBusyLockedButtonProps('ghost')}
           >
             Delete Preset
           </button>
@@ -273,18 +285,16 @@ export function ManualSearchPriceSection({
                 language,
               })
             }
-            className="align-self-end"
             disabled={isBusy}
-            title={isBusy ? 'Search in progress. Please wait.' : undefined}
+            {...getBusyLockedButtonProps('align-self-end')}
           >
             {manualLoading ? 'Searching…' : 'Search'}
           </button>
           <button
             type="button"
-            className="ghost align-self-end"
             onClick={onClearManualFilters}
             disabled={!canClearManualFilters || isBusy}
-            title={isBusy ? 'Search in progress. Please wait.' : undefined}
+            {...getBusyLockedButtonProps('ghost align-self-end')}
           >
             Clear Filters
           </button>
@@ -345,22 +355,22 @@ export function ManualSearchPriceSection({
                     </div>
                     <div className="card-actions-col">
                       <button
-                        className="secondary"
                         disabled={isBusy}
                         onClick={() => {
                           onSelectManual(card);
                         }}
+                        {...getBusyLockedButtonProps('secondary')}
                       >
                         Select
                       </button>
-                      <button onClick={() => onGetPrice(card)} disabled={isBusy}>
+                      <button onClick={() => onGetPrice(card)} disabled={isBusy} {...getBusyLockedButtonProps()}>
                         Get Price
                       </button>
                       <button
-                        className="ghost"
                         type="button"
                         disabled={isBusy}
                         onClick={() => onToggleWatchlist(card)}
+                        {...getBusyLockedButtonProps('ghost')}
                       >
                         {isWatchlisted(card) ? 'Remove Watchlist' : 'Add Watchlist'}
                       </button>
