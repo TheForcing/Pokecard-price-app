@@ -112,6 +112,15 @@ button:disabled {
   cursor: not-allowed;
 }
 
+button.busy-locked-control:disabled[data-busy-locked='true'] {
+  opacity: 1;
+  cursor: progress;
+  border-color: #a9bee1;
+  background: linear-gradient(180deg, #ebf2ff, #dae6fb);
+  color: #2e4d7c;
+  box-shadow: none;
+}
+
 .app-shell {
   max-width: 1120px;
   margin: 0 auto;
