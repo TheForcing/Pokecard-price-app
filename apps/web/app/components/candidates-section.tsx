@@ -24,8 +24,8 @@ export function CandidatesSection({
   onGetPrice,
 }: CandidatesSectionProps) {
   return (
-    <section className="panel">
-      <h2>Candidates</h2>
+    <section className="panel" id="candidates-section" aria-labelledby="candidates-heading">
+      <h2 id="candidates-heading">Candidates</h2>
       {isLowConfidence && (
         <p className="warn-text note-text">
           Low confidence. Please verify the candidate.

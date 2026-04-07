@@ -57,6 +57,7 @@ type SearchPreset = {
 };
 
 const BUSY_LOCK_TOOLTIP = 'Search in progress. Please wait.';
+type BusyLockedButtonVariant = 'primary' | 'secondary' | 'ghost';
 
 export function ManualSearchPriceSection({
   language,
@@ -120,13 +121,19 @@ export function ManualSearchPriceSection({
     selectedPresetId !== '' ||
     hasSearched;
 
-  function getBusyLockedButtonProps(className?: string): {
+  function getBusyLockedButtonProps(variant: BusyLockedButtonVariant, className?: string): {
     className?: string;
     title?: string;
     'data-busy-locked'?: 'true';
   } {
+    const busyVariantClassName = isBusy
+      ? variant === 'primary'
+        ? 'busy-locked-control'
+        : `busy-locked-control busy-locked-control--${variant}`
+      : undefined;
+
     return {
-      className: [className, isBusy ? 'busy-locked-control' : undefined].filter(Boolean).join(' ') || undefined,
+      className: [className, busyVariantClassName].filter(Boolean).join(' ') || undefined,
       title: isBusy ? BUSY_LOCK_TOOLTIP : undefined,
       'data-busy-locked': isBusy ? 'true' : undefined,
     };
@@ -134,9 +141,9 @@ export function ManualSearchPriceSection({
 
   return (
     <>
-      <section className="panel">
+      <section className="panel" id="manual-search-section" aria-labelledby="manual-search-heading">
         <div className="panel-header">
-          <h2>Manual Search</h2>
+          <h2 id="manual-search-heading">Manual Search</h2>
           <span className="section-kicker">Fallback flow</span>
         </div>
         <p className="panel-note">Use this when OCR is uncertain. Search by name + set/number + variant.</p>
@@ -170,7 +177,7 @@ export function ManualSearchPriceSection({
             type="button"
             onClick={onSavePreset}
             disabled={!presetNameInput.trim() || isBusy}
-            {...getBusyLockedButtonProps('secondary')}
+            {...getBusyLockedButtonProps('secondary', 'secondary')}
           >
             Save Preset
           </button>
@@ -194,7 +201,7 @@ export function ManualSearchPriceSection({
             type="button"
             onClick={onApplyPreset}
             disabled={!selectedPresetId || isBusy}
-            {...getBusyLockedButtonProps()}
+            {...getBusyLockedButtonProps('primary')}
           >
             Apply Preset
           </button>
@@ -202,7 +209,7 @@ export function ManualSearchPriceSection({
             type="button"
             onClick={onDeletePreset}
             disabled={!selectedPresetId || isBusy}
-            {...getBusyLockedButtonProps('ghost')}
+            {...getBusyLockedButtonProps('ghost', 'ghost')}
           >
             Delete Preset
           </button>
@@ -286,7 +293,7 @@ export function ManualSearchPriceSection({
               })
             }
             disabled={isBusy}
-            {...getBusyLockedButtonProps('align-self-end')}
+            {...getBusyLockedButtonProps('primary', 'align-self-end')}
           >
             {manualLoading ? 'Searching…' : 'Search'}
           </button>
@@ -294,7 +301,7 @@ export function ManualSearchPriceSection({
             type="button"
             onClick={onClearManualFilters}
             disabled={!canClearManualFilters || isBusy}
-            {...getBusyLockedButtonProps('ghost align-self-end')}
+            {...getBusyLockedButtonProps('ghost', 'ghost align-self-end')}
           >
             Clear Filters
           </button>
@@ -359,18 +366,18 @@ export function ManualSearchPriceSection({
                         onClick={() => {
                           onSelectManual(card);
                         }}
-                        {...getBusyLockedButtonProps('secondary')}
+                        {...getBusyLockedButtonProps('secondary', 'secondary')}
                       >
                         Select
                       </button>
-                      <button onClick={() => onGetPrice(card)} disabled={isBusy} {...getBusyLockedButtonProps()}>
+                      <button onClick={() => onGetPrice(card)} disabled={isBusy} {...getBusyLockedButtonProps('primary')}>
                         Get Price
                       </button>
                       <button
                         type="button"
                         disabled={isBusy}
                         onClick={() => onToggleWatchlist(card)}
-                        {...getBusyLockedButtonProps('ghost')}
+                        {...getBusyLockedButtonProps('ghost', 'ghost')}
                       >
                         {isWatchlisted(card) ? 'Remove Watchlist' : 'Add Watchlist'}
                       </button>
@@ -393,8 +400,8 @@ export function ManualSearchPriceSection({
         )}
       </section>
 
-      <section className="panel">
-        <h2>Price</h2>
+      <section className="panel" id="price-section" aria-labelledby="price-heading">
+        <h2 id="price-heading">Price</h2>
         <div aria-live="polite" aria-atomic="true">
           {!price ? (
             <p className="muted empty-state-text">
