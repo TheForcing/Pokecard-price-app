@@ -20,7 +20,7 @@ export function RecentHistorySection({
   formatLowPriceDiff,
 }: RecentHistorySectionProps) {
   return (
-    <section className="panel" aria-labelledby="recent-history-heading">
+    <section className="panel" id="recent-history-section" aria-labelledby="recent-history-heading">
       <div className="panel-header">
         <h2 id="recent-history-heading" className="panel-subtitle">
           Recent Price Checks

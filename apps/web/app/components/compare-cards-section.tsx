@@ -10,7 +10,7 @@ type CompareCardsSectionProps = {
 
 export function CompareCardsSection({ compareCards, onGetPrice, onRemove }: CompareCardsSectionProps) {
   return (
-    <section className="panel" aria-labelledby="compare-cards-heading">
+    <section className="panel" id="compare-section" aria-labelledby="compare-cards-heading">
       <div className="panel-header">
         <h2 id="compare-cards-heading" className="panel-subtitle">
           Compare Cards (up to 3)

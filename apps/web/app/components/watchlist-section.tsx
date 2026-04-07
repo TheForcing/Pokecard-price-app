@@ -26,7 +26,7 @@ export function WatchlistSection({
   formatLowPriceDiff,
 }: WatchlistSectionProps) {
   return (
-    <section className="panel" aria-labelledby="watchlist-heading">
+    <section className="panel" id="watchlist-section" aria-labelledby="watchlist-heading">
       <div className="panel-header">
         <h2 id="watchlist-heading" className="panel-subtitle">
           Watchlist
