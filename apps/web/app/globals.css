@@ -119,6 +119,19 @@ button.busy-locked-control:disabled[data-busy-locked='true'] {
   background: linear-gradient(180deg, #ebf2ff, #dae6fb);
   color: #2e4d7c;
   box-shadow: none;
+  filter: none;
+}
+
+button.busy-locked-control.busy-locked-control--secondary:disabled[data-busy-locked='true'] {
+  border-color: #c6d3e9;
+  background: linear-gradient(180deg, #fbfdff, #eef4fd);
+  color: #445978;
+}
+
+button.busy-locked-control.busy-locked-control--ghost:disabled[data-busy-locked='true'] {
+  border-color: #d3ddea;
+  background: #f8fbff;
+  color: #55657f;
 }
 
 .app-shell {
@@ -307,6 +320,63 @@ button.busy-locked-control:disabled[data-busy-locked='true'] {
 
 .mobile-hint {
   display: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.quick-nav {
+  margin-top: 16px;
+}
+
+.quick-nav-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 10px;
+}
+
+.quick-nav-link {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 76px;
+  padding: 12px;
+  border: 1px solid #d7e2f2;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fcfdff, #f2f7ff);
+  color: var(--text);
+  text-decoration: none;
+  box-shadow: 0 4px 10px rgba(41, 73, 124, 0.06);
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease;
+}
+
+.quick-nav-link strong {
+  font-size: 0.95rem;
+}
+
+.quick-nav-link span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.quick-nav-link:hover,
+.quick-nav-link:focus-visible {
+  transform: translateY(-1px);
+  border-color: #aac1e7;
+  box-shadow: 0 8px 18px rgba(35, 79, 160, 0.12);
 }
 
 .file-picker {
@@ -766,6 +836,14 @@ button.busy-locked-control:disabled[data-busy-locked='true'] {
 
   .flow-chip {
     padding: 9px 10px;
+  }
+
+  .quick-nav-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .quick-nav-link {
+    min-height: 72px;
   }
 
   .field-grow,
