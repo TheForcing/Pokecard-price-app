@@ -334,7 +334,10 @@ export function UploadCameraCropSection({
 
   return (
     <>
-      <section className="panel panel-flex-wrap">
+      <section className="panel panel-flex-wrap" id="upload-section" aria-labelledby="upload-heading">
+        <h2 id="upload-heading" className="sr-only">
+          Upload and recognition setup
+        </h2>
         <label htmlFor={marketSelectId} className="field">
           Market
           <select
@@ -532,8 +535,8 @@ export function UploadCameraCropSection({
         </section>
       )}
 
-      <section className="panel">
-        <h2 className="panel-subtitle">Preview</h2>
+      <section className="panel" id="preview-section" aria-labelledby="preview-heading">
+        <h2 id="preview-heading" className="panel-subtitle">Preview</h2>
         {preview ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img

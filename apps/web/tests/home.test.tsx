@@ -27,6 +27,23 @@ describe('HomePage', () => {
     expect(screen.getByRole('combobox', { name: /watchlist sort/i })).toBeInTheDocument();
   });
 
+  it('renders quick jump navigation links for major sections', () => {
+    render(<HomePage />);
+
+    const quickNav = screen.getByRole('navigation', { name: 'Quick section navigation' });
+    expect(quickNav).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /upload start here/i })).toHaveAttribute('href', '#upload-section');
+    expect(screen.getByRole('link', { name: /candidates 0 ready/i })).toHaveAttribute('href', '#candidates-section');
+    expect(screen.getByRole('link', { name: /manual search 0 results/i })).toHaveAttribute(
+      'href',
+      '#manual-search-section',
+    );
+    expect(screen.getByRole('link', { name: /price waiting/i })).toHaveAttribute('href', '#price-section');
+    expect(screen.getByRole('link', { name: /compare 0\/3 cards/i })).toHaveAttribute('href', '#compare-section');
+    expect(screen.getByRole('link', { name: /watchlist 0 saved/i })).toHaveAttribute('href', '#watchlist-section');
+    expect(screen.getByRole('link', { name: /history 0 checks/i })).toHaveAttribute('href', '#recent-history-section');
+  });
+
   it('renders target price input for watchlist items', () => {
     window.localStorage.setItem(
       WATCHLIST_STORAGE_KEY,
@@ -326,6 +343,8 @@ describe('HomePage', () => {
     expect(searchingButton).toHaveClass('busy-locked-control');
     expect(searchingButton).toHaveAttribute('data-busy-locked', 'true');
     expect(savePresetButton).toHaveClass('busy-locked-control');
+    expect(savePresetButton).toHaveClass('busy-locked-control--secondary');
+    expect(clearFiltersButton).toHaveClass('busy-locked-control--ghost');
   });
 
   it('hydrates market/language/manual search inputs from URL query', () => {

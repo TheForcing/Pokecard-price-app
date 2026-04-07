@@ -48,6 +48,12 @@ type ManualActionToast = {
   message: string;
 };
 
+type QuickNavItem = {
+  href: string;
+  label: string;
+  meta: string;
+};
+
 function parseSavedCards(raw: string | null): SavedCard[] {
   if (!raw) return [];
   try {
@@ -231,6 +237,27 @@ export default function HomePage() {
   const hasPrice = !!price.price;
   const selectedCandidate = recognize.selected;
   const selectedManualCard = cardSearch.manualSelected;
+  const quickNavItems = useMemo<QuickNavItem[]>(
+    () => [
+      { href: '#upload-section', label: 'Upload', meta: previewLabel(hasRecognition, hasManualActivity, hasPrice) },
+      { href: '#candidates-section', label: 'Candidates', meta: `${recognize.topCandidates.length} ready` },
+      { href: '#manual-search-section', label: 'Manual Search', meta: `${cardSearch.manualResults.length} results` },
+      { href: '#price-section', label: 'Price', meta: hasPrice ? 'Loaded' : 'Waiting' },
+      { href: '#compare-section', label: 'Compare', meta: `${compareCards.length}/3 cards` },
+      { href: '#watchlist-section', label: 'Watchlist', meta: `${watchlist.length} saved` },
+      { href: '#recent-history-section', label: 'History', meta: `${recentHistory.length} checks` },
+    ],
+    [
+      cardSearch.manualResults.length,
+      compareCards.length,
+      hasManualActivity,
+      hasPrice,
+      hasRecognition,
+      recentHistory.length,
+      recognize.topCandidates.length,
+      watchlist.length,
+    ],
+  );
   const sortedWatchlist = useMemo(() => {
     const next = [...watchlist];
     if (watchlistSort === 'name-asc') {
@@ -555,6 +582,24 @@ export default function HomePage() {
         </div>
       </section>
 
+      <nav className="quick-nav panel" aria-label="Quick section navigation">
+        <div className="panel-header">
+          <div>
+            <h2 className="panel-subtitle">Quick Jump</h2>
+            <p className="panel-note-tight">Jump to the section you want to work with next without scrolling through the full page.</p>
+          </div>
+          <span className="section-kicker">Navigation</span>
+        </div>
+        <div className="quick-nav-grid">
+          {quickNavItems.map((item) => (
+            <a key={item.href} href={item.href} className="quick-nav-link">
+              <strong>{item.label}</strong>
+              <span>{item.meta}</span>
+            </a>
+          ))}
+        </div>
+      </nav>
+
       <UploadCameraCropSection
         market={market}
         language={language}
@@ -697,4 +742,10 @@ export default function HomePage() {
       </aside>
     </main>
   );
+}
+
+function previewLabel(hasRecognition: boolean, hasManualActivity: boolean, hasPrice: boolean): string {
+  if (hasPrice) return 'Done';
+  if (hasRecognition || hasManualActivity) return 'In progress';
+  return 'Start here';
 }
